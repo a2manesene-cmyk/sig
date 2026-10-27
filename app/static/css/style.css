@@ -1,0 +1,65 @@
+:root {
+  --ancar-green: #1E5631;
+  --ancar-green-2: #2E7D46;
+  --ancar-gold: #9A7B14;
+  --ancar-light: #EAF3EC;
+}
+
+body {
+  background: #f5f7f5;
+}
+
+.ancar-navbar {
+  background: var(--ancar-green);
+}
+.ancar-navbar .navbar-brand,
+.ancar-navbar .nav-link { color: #fff !important; }
+.ancar-navbar .nav-link.disabled { color: rgba(255,255,255,.55) !important; }
+
+.ancar-badge {
+  background: var(--ancar-gold);
+  color: #fff;
+  font-weight: 500;
+}
+
+.ancar-title { color: var(--ancar-green); }
+.ancar-logo { font-size: 2.6rem; color: var(--ancar-green); }
+
+.ancar-btn {
+  background: var(--ancar-green);
+  color: #fff;
+}
+.ancar-btn:hover { background: var(--ancar-green-2); color: #fff; }
+
+/* Cartes statistiques */
+.stat-card {
+  border: none;
+  border-left: 4px solid var(--ancar-green);
+  box-shadow: 0 1px 4px rgba(0,0,0,.06);
+}
+.stat-icon { font-size: 1.6rem; color: var(--ancar-green-2); }
+.stat-value { font-size: 2rem; font-weight: 700; color: var(--ancar-green); line-height: 1.1; }
+.stat-label { color: #6c757d; font-size: .9rem; }
+
+/* Tuiles de modules */
+.module-tile {
+  background: var(--ancar-light);
+  border: 1px solid #d5e5d9;
+  border-radius: 8px;
+  padding: .75rem 1rem;
+  color: var(--ancar-green);
+  font-size: .95rem;
+}
+.module-tile i { margin-right: .35rem; }
+
+/* Vignettes parcelles */
+.parcelle-card { transition: transform .12s ease, box-shadow .12s ease; }
+.parcelle-card:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(0,0,0,.12) !important; }
+
+/* Barre de navigation : pas de retour à la ligne, espacement homogène */
+.ancar-navbar .nav-link { white-space: nowrap; }
+.ancar-navbar .navbar-nav.me-auto .nav-item { margin-right: .15rem; }
+.ancar-navbar .navbar-brand { white-space: nowrap; }
+@media (min-width: 992px) {
+  .ancar-navbar .navbar-nav .nav-link { padding-left: .6rem; padding-right: .6rem; }
+}

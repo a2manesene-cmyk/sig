@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Import GeoJSON — ANCAR{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center"><div class="col-lg-7">
+  <h3 class="ancar-title mb-3">Importer des parcelles (GeoJSON)</h3>
+  <div class="card border-0 shadow-sm"><div class="card-body">
+  <form method="POST" enctype="multipart/form-data">
+    <div class="mb-3">
+      <label class="form-label">Fichier GeoJSON (export QField / QGIS)</label>
+      <input type="file" name="fichier" accept=".geojson,.json,application/geo+json" class="form-control" required>
+    </div>
+    <div class="mb-3">
+      <label class="form-label">Système de coordonnées source</label>
+      <select name="srid_source" class="form-select">
+        <option value="32628" selected>UTM zone 28N — Sénégal (EPSG:32628)</option>
+        <option value="32629">UTM zone 29N — Sénégal Est (EPSG:32629)</option>
+        <option value="4326">WGS 84 — déjà en lat/long (EPSG:4326)</option>
+      </select>
+      <div class="form-text">Les géométries sont reprojetées en WGS 84 (EPSG:4326) pour le stockage PostGIS.</div>
+    </div>
+    <button class="btn ancar-btn"><i class="bi bi-upload"></i> Importer</button>
+    <a href="{{ url_for('parcelles.liste') }}" class="btn btn-outline-secondary">Annuler</a>
+  </form>
+  <p class="text-muted small mt-3">
+    <i class="bi bi-info-circle"></i>
+    Propriétés reconnues : <code>code</code> (ou <code>nom</code>), <code>culture</code>,
+    <code>surface_ha</code>. La surface est calculée automatiquement si elle est absente.
+  </p>
+  </div></div>
+</div></div>
+{% endblock %}

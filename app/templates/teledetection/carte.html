@@ -1,0 +1,244 @@
+{% extends "base.html" %}
+{% block title %}Suivi de la végétation — ANCAR SIG{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-2">
+  <h3 class="ancar-title mb-0">Suivi de la végétation</h3>
+  <div class="d-flex gap-2">
+    <select id="selIndice" class="form-select form-select-sm" style="width:auto">
+      {% for i in indices %}
+      <option value="{{ i }}" {{ 'selected' if i == indice }}>{{ infos[i].label }} ({{ infos[i].acronyme }})</option>
+      {% endfor %}
+    </select>
+    {% if current_user.niveau >= 3 %}
+    <a href="{{ url_for('teledetection.calculer') }}" class="btn ancar-btn btn-sm"><i class="bi bi-cpu"></i> Calculer</a>
+    {% endif %}
+    <a href="{{ url_for('teledetection.comparaison') }}" class="btn btn-outline-success btn-sm"><i class="bi bi-layers"></i> Comparer 2 dates</a>
+  </div>
+</div>
+<p id="desc" class="text-muted small mb-2"></p>
+
+<div class="d-flex flex-wrap gap-2 align-items-end mb-2">
+  <div><label class="form-label small mb-0">Vue pixel (10 m) — début</label>
+    <input type="date" id="pxD1" class="form-control form-control-sm"></div>
+  <div><label class="form-label small mb-0">fin</label>
+    <input type="date" id="pxD2" class="form-control form-control-sm"></div>
+  <button id="btnPixel" class="btn btn-outline-success btn-sm"><i class="bi bi-grid-3x3"></i> Afficher en pixel</button>
+  <button id="btnRgb" class="btn btn-outline-primary btn-sm"><i class="bi bi-image"></i> Variabilité RGB (vraies couleurs)</button>
+  <button id="btnPixelOff" class="btn btn-outline-secondary btn-sm d-none">Masquer le raster</button>
+  <span id="pxMsg" class="small text-muted"></span>
+</div>
+
+<div id="map" style="height: 68vh; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,.1);"></div>
+<p id="msg" class="text-muted small mt-2"></p>
+{% endblock %}
+
+{% block scripts %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const INFOS = {{ infos|tojson }};
+
+const map = L.map('map').setView([14.2, -15.6], 8);
+const _osmT = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  maxZoom: 19, attribution: '© OpenStreetMap'
+});
+const _satT = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+  maxZoom: 19, attribution: 'Imagerie © Esri, Maxar'
+}).addTo(map);
+
+// Contours de toutes les parcelles (visibles même sans indice calculé)
+const contours = L.geoJSON(null, {
+  style: { color: '#FFD400', weight: 1, fill: false },
+  onEachFeature: (f, l) => {
+    const p = f.properties;
+    const surf = p.surface_ha != null ? p.surface_ha.toFixed(2) + ' ha' : '—';
+    l.bindTooltip(
+      `<b>${p.code || 'Parcelle #' + p.id}</b><br>` +
+      `Producteur : ${p.producteur || '—'}<br>` +
+      `Culture : ${p.culture || '—'}<br>Surface : ${surf}`,
+      { sticky: true, direction: 'top', opacity: 0.95 }
+    );
+  }
+}).addTo(map);
+fetch("{{ url_for('parcelles.geojson') }}")
+  .then(r => r.json())
+  .then(d => {
+    if (d.features && d.features.length) {
+      contours.addData(d);
+      try { map.fitBounds(contours.getBounds(), { padding: [20, 20] }); } catch (e) {}
+      const m = document.getElementById('msg');
+      if (m && !m.textContent) m.textContent = d.features.length + " parcelle(s) — contours affichés.";
+    }
+  })
+  .catch(() => {});
+
+L.control.layers(
+  { "Satellite (RGB)": _satT, "Plan (OSM)": _osmT },
+  { "Contours des parcelles": contours },
+  { position: 'topright' }
+).addTo(map);
+
+// Interprétation agronomique d'une valeur
+// Code couleur unifié : rouge = mauvais, orange = moyen, vert = bon (échelle maïs)
+const C_ROUGE = '#d73027', C_ORANGE = '#F39C12', C_JAUNE = '#f4c430',
+      C_VERT = '#1a9850', C_VERT2 = '#006837', C_GRIS = '#bdbdbd', C_EAU = '#1565C0';
+function interpret(indice, v) {
+  if (v == null) return { t: '—', c: C_GRIS };
+  if (['ndvi','savi','evi'].includes(indice)) {
+    if (v < 0.08) return { t: 'Très faible', c: C_ROUGE };
+    if (v < 0.25) return { t: 'Modérée', c: C_ORANGE };
+    return { t: 'Dense', c: C_VERT };
+  }
+  if (indice === 'ndmi') {
+    return { t: (v < 0.10 ? 'Faible humidité' : (v < 0.25 ? 'Humidité moyenne' : 'Bonne humidité')), c: couleurHumidite(v) };
+  }
+  if (indice === 'ndwi') {
+    return { t: (v < 0 ? "Peu / pas d'eau" : 'Présence d\'eau'), c: couleurEau(v) };
+  }
+  return { t: '', c: C_GRIS };
+}
+
+// Dégradés blanc -> bleu selon la valeur
+function _degradeBleu(v, vmin, vmax) {
+  if (v == null) return C_GRIS;
+  const t = Math.max(0, Math.min(1, (v - vmin) / (vmax - vmin)));
+  const r = Math.round(255 + t * (21 - 255));
+  const g = Math.round(255 + t * (101 - 255));
+  const b = Math.round(255 + t * (192 - 255));
+  return `rgb(${r},${g},${b})`;
+}
+function couleurEau(v) { return _degradeBleu(v, -0.30, 0.50); }       // NDWI
+function couleurHumidite(v) { return _degradeBleu(v, -0.10, 0.40); } // NDMI
+
+// Couleur cartographique = 3 classes via interpret
+function couleur(indice, v) { return interpret(indice, v).c; }
+
+// Libellés de légende selon le thème de l'indice
+function bornesLegende(indice) {
+  if (indice === 'ndwi') return ['Sans eau', 'Eau présente'];
+  return ['Faible', 'Dense'];
+}
+
+let couche = null, legende = null;
+
+function chargerLegende(indice) {
+  if (legende) map.removeControl(legende);
+  legende = L.control({ position: 'bottomright' });
+  legende.onAdd = function () {
+    const div = L.DomUtil.create('div', 'card p-2 shadow-sm');
+    div.style.background = '#fff';
+    const b = bornesLegende(indice);
+    let html = `<div class="small fw-semibold mb-1">${INFOS[indice].label}</div>`;
+    function li(col, txt) {
+      return `<div class="small"><span style="display:inline-block;width:14px;height:14px;background:${col};margin-right:4px;border:1px solid #999"></span>${txt}</div>`;
+    }
+    if (indice === 'ndwi') {
+      html += '<div class="small" style="margin:2px 0 3px">' +
+        '<span style="display:inline-block;width:120px;height:12px;border:1px solid #999;' +
+        'background:linear-gradient(to right,#ffffff,#1565C0)"></span></div>' +
+        '<div class="d-flex justify-content-between" style="width:120px">' +
+        '<span class="small">Absence</span><span class="small">Présence</span></div>';
+    } else if (indice === 'ndmi') {
+      html += '<div class="small" style="margin:2px 0 3px">' +
+        '<span style="display:inline-block;width:120px;height:12px;border:1px solid #999;' +
+        'background:linear-gradient(to right,#ffffff,#1565C0)"></span></div>' +
+        '<div class="d-flex justify-content-between" style="width:120px">' +
+        '<span class="small">Sec</span><span class="small">Humide</span></div>';
+    } else {
+      html += li(C_ROUGE, 'Très faible (&lt; 0,08)') +
+              li(C_ORANGE, 'Modérée (0,08–0,25)') +
+              li(C_VERT, 'Dense (&ge; 0,25)');
+    }
+    div.innerHTML = html;
+    return div;
+  };
+  legende.addTo(map);
+}
+
+function charger(indice) {
+  document.getElementById('desc').textContent = INFOS[indice].description;
+  if (couche) { map.removeLayer(couche); couche = null; }
+  document.getElementById('msg').textContent = "Chargement…";
+  chargerLegende(indice);
+  fetch(`{{ url_for('teledetection.geojson') }}?indice=${indice}`)
+    .then(r => r.json())
+    .then(data => {
+      if (!data.features || !data.features.length) {
+        document.getElementById('msg').textContent =
+          "Aucune donnée disponible. Lancez d'abord un calcul.";
+        return;
+      }
+      couche = L.geoJSON(data, {
+        style: f => ({ color: '#333', weight: 1, fillColor: couleur(indice, f.properties.valeur), fillOpacity: 0.78 }),
+        onEachFeature: (f, l) => {
+          const p = f.properties;
+          const it = interpret(indice, p.valeur);
+          l.bindTooltip(
+            `<b>${p.code || 'Parcelle'}</b><br>` +
+            `${INFOS[indice].label} : <b>${p.valeur}</b> <span style="color:${it.c}">(${it.t})</span><br>` +
+            `Date : ${p.date || '—'}`,
+            { sticky: true, direction: 'top', opacity: 0.95 }
+          );
+          l.bindPopup(
+            `<b>${p.code || 'Parcelle'}</b><br>` +
+            `${INFOS[indice].label} : <b>${p.valeur}</b> <span style="color:${it.c}">(${it.t})</span><br>` +
+            `Date : ${p.date || '—'}<br>` +
+            `<a href="/parcelles/${p.id}/fiche">Voir la fiche</a>`
+          );
+        }
+      }).addTo(map);
+      map.fitBounds(couche.getBounds(), { padding: [20, 20] });
+      document.getElementById('msg').textContent =
+        `${data.features.length} parcelle(s) — ${INFOS[indice].label}`;
+    })
+    .catch(() => { document.getElementById('msg').textContent = "Erreur de chargement."; });
+}
+
+document.getElementById('selIndice').addEventListener('change', e => charger(e.target.value));
+charger("{{ indice }}");
+
+// --- Vue pixel (raster Earth Engine) ---
+let rasterLayer = null;
+document.getElementById('btnPixel').addEventListener('click', () => {
+  const ind = document.getElementById('selIndice').value;
+  const d1 = document.getElementById('pxD1').value;
+  const d2 = document.getElementById('pxD2').value;
+  const px = document.getElementById('pxMsg');
+  if (!d1 || !d2) { px.textContent = 'Choisissez une période (début et fin).'; return; }
+  px.textContent = 'Calcul du raster…';
+  fetch(`{{ url_for('teledetection.raster') }}?indice=${ind}&d1=${d1}&d2=${d2}`)
+    .then(r => r.json())
+    .then(j => {
+      if (j.error) { px.textContent = 'Erreur : ' + j.error; return; }
+      if (rasterLayer) map.removeLayer(rasterLayer);
+      rasterLayer = L.tileLayer(j.tile_url, { opacity: 0.9, maxZoom: 19, attribution: 'Sentinel-2 / Earth Engine' }).addTo(map);
+      px.textContent = 'Raster affiché (10 m) — ' + INFOS[ind].label + '.';
+      document.getElementById('btnPixelOff').classList.remove('d-none');
+    })
+    .catch(() => { px.textContent = 'Erreur de chargement du raster.'; });
+});
+document.getElementById('btnRgb').addEventListener('click', () => {
+  let d1 = document.getElementById('pxD1').value || '2026-05-15';
+  let d2 = document.getElementById('pxD2').value || '{{ aujourdhui }}';
+  const px = document.getElementById('pxMsg');
+  const reg = (document.getElementById('selRegion') ? document.getElementById('selRegion').value : '') || '';
+  px.textContent = 'Calcul de l\'image RGB…';
+  fetch(`{{ url_for('teledetection.rgb') }}?d1=${d1}&d2=${d2}&region=${reg}`)
+    .then(r => r.json())
+    .then(j => {
+      if (j.error) { px.textContent = 'Erreur : ' + j.error; return; }
+      if (rasterLayer) map.removeLayer(rasterLayer);
+      rasterLayer = L.tileLayer(j.tile_url, { opacity: 1, maxZoom: 19, attribution: 'Sentinel-2 / Earth Engine' }).addTo(map);
+      px.textContent = 'Image en vraies couleurs affichée (variabilité parcellaire).';
+      document.getElementById('btnPixelOff').classList.remove('d-none');
+    })
+    .catch(() => { px.textContent = 'Erreur de chargement de l\'image RGB.'; });
+});
+document.getElementById('btnPixelOff').addEventListener('click', () => {
+  if (rasterLayer) { map.removeLayer(rasterLayer); rasterLayer = null; }
+  document.getElementById('btnPixelOff').classList.add('d-none');
+  document.getElementById('pxMsg').textContent = '';
+});
+</script>
+{% endblock %}

@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Modifier' if u else 'Nouvel' }} utilisateur — ANCAR SIG{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center"><div class="col-lg-8">
+  <h3 class="ancar-title mb-3">{{ 'Modifier l’utilisateur' if u else 'Nouvel utilisateur' }}</h3>
+  <div class="card border-0 shadow-sm"><div class="card-body">
+  <form method="POST">
+    <div class="row g-3">
+      <div class="col-md-6">
+        <label class="form-label">Nom complet</label>
+        <input name="nom" class="form-control" value="{{ u.nom if u else '' }}" required>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">E-mail</label>
+        <input name="email" type="email" class="form-control" value="{{ u.email if u else '' }}" required>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Mot de passe {% if u %}<span class="text-muted small">(laisser vide pour ne pas changer)</span>{% endif %}</label>
+        <input name="password" type="password" class="form-control" {{ 'required' if not u }}>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Téléphone</label>
+        <input name="telephone" class="form-control" value="{{ u.telephone if u and u.telephone else '' }}">
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Rôle</label>
+        <select name="role_id" id="selRole" class="form-select" required>
+          {% for r in roles %}<option value="{{ r.id }}" data-code="{{ r.code }}" {{ 'selected' if u and u.role_id == r.id }}>{{ r.libelle }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Zone</label>
+        <select name="zone_id" class="form-select">
+          <option value="">—</option>
+          {% for z in zones %}<option value="{{ z.id }}" {{ 'selected' if u and u.zone_id == z.id }}>{{ z.nom }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Région</label>
+        <select name="region_id" class="form-select">
+          <option value="">—</option>
+          {% for r in regions %}<option value="{{ r.id }}" {{ 'selected' if u and u.region_id == r.id }}>{{ r.nom }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="col-12">
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" name="actif" id="actif" {{ 'checked' if (u.actif if u else True) }}>
+          <label class="form-check-label" for="actif">Compte actif</label>
+        </div>
+      </div>
+    </div>
+
+    <hr class="my-3">
+    <h6 class="text-muted text-uppercase small mb-2">Périmètre d'accès aux données</h6>
+    <p class="text-muted small">Selon le rôle : la Direction de Zone et le CDCAR sont limités à des <b>départements</b>, le CAR à des <b>communes</b>, l'OP à son <b>organisation</b>. ADMIN, DG et Consultation ont un accès global.</p>
+
+    <div class="row g-3">
+      <div class="col-md-6 perim perim-dep" data-roles="DZ,CDCAR">
+        <label class="form-label">Départements autorisés</label>
+        <select name="departements" class="form-select" multiple size="6">
+          {% for d in departements %}<option value="{{ d }}" {{ 'selected' if u and d in u.departements }}>{{ d }}</option>{% endfor %}
+        </select>
+        <div class="form-text">Ctrl/Cmd pour en sélectionner plusieurs.</div>
+      </div>
+      <div class="col-md-6 perim perim-com" data-roles="CAR">
+        <label class="form-label">Communes autorisées</label>
+        <select name="communes" class="form-select" multiple size="6">
+          {% for c in communes %}<option value="{{ c }}" {{ 'selected' if u and c in u.communes }}>{{ c }}</option>{% endfor %}
+        </select>
+        <div class="form-text">Un CAR peut couvrir plusieurs communes.</div>
+      </div>
+      <div class="col-md-6 perim perim-op" data-roles="OP">
+        <label class="form-label">Organisations</label>
+        <select name="organisations" class="form-select" multiple size="6">
+          {% for o in organisations %}<option value="{{ o.id }}" {{ 'selected' if u and o.id in u.organisations }}>{{ o.nom }}</option>{% endfor %}
+        </select>
+        <div class="form-text">Un utilisateur OP peut couvrir plusieurs organisations (Ctrl/Cmd pour en choisir plusieurs).</div>
+      </div>
+    </div>
+    <div class="mt-3">
+      <button class="btn ancar-btn"><i class="bi bi-check-lg"></i> Enregistrer</button>
+      <a href="{{ url_for('utilisateurs.liste') }}" class="btn btn-outline-secondary">Annuler</a>
+    </div>
+  </form>
+  </div></div>
+</div></div>
+
+<script>
+function majPerimetre() {
+  const sel = document.getElementById('selRole');
+  const code = sel.options[sel.selectedIndex].getAttribute('data-code') || '';
+  document.querySelectorAll('.perim').forEach(bloc => {
+    const roles = (bloc.getAttribute('data-roles') || '').split(',');
+    bloc.style.display = roles.includes(code) ? '' : 'none';
+  });
+}
+document.getElementById('selRole').addEventListener('change', majPerimetre);
+majPerimetre();
+</script>
+{% endblock %}

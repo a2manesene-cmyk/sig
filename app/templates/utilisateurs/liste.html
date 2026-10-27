@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Utilisateurs — ANCAR SIG{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h3 class="ancar-title mb-0">Utilisateurs <span class="badge ancar-badge">{{ users|length }}</span></h3>
+  <div>
+    <a href="{{ url_for('utilisateurs.maintenance') }}" class="btn btn-outline-danger btn-sm"><i class="bi bi-exclamation-octagon"></i> Réinitialiser les données</a>
+    <a href="{{ url_for('utilisateurs.creer') }}" class="btn ancar-btn btn-sm"><i class="bi bi-person-plus"></i> Nouvel utilisateur</a>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm"><div class="card-body p-0">
+<div class="table-responsive">
+<table class="table table-hover mb-0 align-middle">
+  <thead class="table-light">
+    <tr><th>Nom</th><th>E-mail</th><th>Rôle</th><th>Zone</th><th>Région</th><th>Statut</th><th></th></tr>
+  </thead>
+  <tbody>
+  {% for u in users %}
+    <tr>
+      <td class="fw-semibold">{{ u.nom }}</td>
+      <td>{{ u.email }}</td>
+      <td><span class="badge ancar-badge">{{ u.role.libelle }}</span></td>
+      <td>{{ u.zone.nom if u.zone else '—' }}</td>
+      <td>{{ u.region.nom if u.region else '—' }}</td>
+      <td>{% if u.actif %}<span class="badge bg-success">Actif</span>{% else %}<span class="badge bg-secondary">Inactif</span>{% endif %}</td>
+      <td class="text-end">
+        <a href="{{ url_for('utilisateurs.modifier', uid=u.id) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil"></i></a>
+        {% if u.id != current_user.id %}
+        <form method="POST" action="{{ url_for('utilisateurs.supprimer', uid=u.id) }}" class="d-inline" onsubmit="return confirm('Supprimer cet utilisateur ?');">
+          <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+</div></div>
+{% endblock %}

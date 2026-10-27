@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% block title %}Tableau de bord — ANCAR SIG{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <div>
+    <h3 class="mb-0 ancar-title">Tableau de bord</h3>
+    <p class="text-muted mb-0">
+      Bienvenue, {{ user.nom }} — <span class="fw-semibold">{{ user.role.libelle }}</span>
+      {% if campagne %} · Campagne : <span class="fw-semibold">{{ campagne.libelle }}</span>{% endif %}
+    </p>
+  </div>
+</div>
+
+<!-- KPIs généraux -->
+<div class="row g-3 mb-4">
+  <div class="col-6 col-lg-3"><div class="card stat-card h-100"><div class="card-body">
+    <div class="stat-icon"><i class="bi bi-map"></i></div>
+    <div class="stat-value">{{ kpis.parcelles }}</div><div class="stat-label">Parcelles</div>
+  </div></div></div>
+  <div class="col-6 col-lg-3"><div class="card stat-card h-100"><div class="card-body">
+    <div class="stat-icon"><i class="bi bi-rulers"></i></div>
+    <div class="stat-value">{{ '%.1f'|format(kpis.superficie) }}</div><div class="stat-label">Superficie (ha)</div>
+  </div></div></div>
+  <div class="col-6 col-lg-3"><div class="card stat-card h-100"><div class="card-body">
+    <div class="stat-icon"><i class="bi bi-people"></i></div>
+    <div class="stat-value">{{ kpis.producteurs }}</div><div class="stat-label">Producteurs</div>
+  </div></div></div>
+  <div class="col-6 col-lg-3"><div class="card stat-card h-100"><div class="card-body">
+    <div class="stat-icon"><i class="bi bi-building"></i></div>
+    <div class="stat-value">{{ kpis.organisations }}</div><div class="stat-label">Organisations</div>
+  </div></div></div>
+</div>
+
+<!-- Graphiques structurels -->
+<div class="row g-3">
+  <div class="col-lg-7"><div class="card border-0 shadow-sm h-100"><div class="card-body">
+    <h6 class="text-muted text-uppercase small mb-3">Superficie par région (ha)</h6>
+    <canvas id="chartRegion" height="140"></canvas>
+  </div></div></div>
+  <div class="col-lg-5"><div class="card border-0 shadow-sm h-100"><div class="card-body">
+    <h6 class="text-muted text-uppercase small mb-3">Répartition des parcelles par culture</h6>
+    <canvas id="chartCulture" height="180"></canvas>
+  </div></div></div>
+  <div class="col-12"><div class="card border-0 shadow-sm"><div class="card-body">
+    <h6 class="text-muted text-uppercase small mb-3">Superficie par organisation (ha)</h6>
+    <canvas id="chartOrg" height="90"></canvas>
+  </div></div></div>
+</div>
+
+<!-- Suivi de la végétation -->
+{% if teledetection.actif %}
+<h5 class="ancar-title mt-4 mb-3">Suivi de la végétation
+  <span class="text-muted small fw-normal">· dernier relevé : {{ teledetection.derniere_date }}</span>
+</h5>
+<div class="row g-3 mb-3">
+  <div class="col-6 col-lg-3"><div class="card stat-card h-100"><div class="card-body">
+    <div class="stat-icon"><i class="bi bi-satellite"></i></div>
+    <div class="stat-value">{{ teledetection.nb_suivies }}</div><div class="stat-label">Parcelles suivies</div>
+  </div></div></div>
+  <div class="col-6 col-lg-3"><div class="card stat-card h-100"><div class="card-body">
+    <div class="stat-icon"><i class="bi bi-flower1"></i></div>
+    <div class="stat-value">{{ '%.2f'|format(teledetection.ndvi_moyen) if teledetection.ndvi_moyen is not none else '—' }}</div>
+    <div class="stat-label">Vigueur moyenne (NDVI)</div>
+  </div></div></div>
+  <div class="col-6 col-lg-3"><div class="card stat-card h-100" style="border-left-color:#d73027"><div class="card-body">
+    <div class="stat-icon" style="color:#d73027"><i class="bi bi-exclamation-triangle"></i></div>
+    <div class="stat-value">{{ teledetection.nb_faible }}</div><div class="stat-label">Parcelles à faible vigueur</div>
+  </div></div></div>
+  <div class="col-6 col-lg-3"><div class="card stat-card h-100" style="border-left-color:#a50026"><div class="card-body">
+    <div class="stat-icon" style="color:#a50026"><i class="bi bi-droplet"></i></div>
+    <div class="stat-value">{{ teledetection.nb_stress }}</div><div class="stat-label">Parcelles en stress hydrique</div>
+  </div></div></div>
+</div>
+<div class="row g-3">
+  <div class="col-lg-6"><div class="card border-0 shadow-sm h-100"><div class="card-body">
+    <h6 class="text-muted text-uppercase small mb-3">État de la végétation (vigueur)</h6>
+    <canvas id="chartVigueur" height="160"></canvas>
+  </div></div></div>
+  <div class="col-lg-6"><div class="card border-0 shadow-sm h-100"><div class="card-body">
+    <h6 class="text-muted text-uppercase small mb-3">Niveau de stress hydrique</h6>
+    <canvas id="chartStress" height="160"></canvas>
+  </div></div></div>
+</div>
+{% else %}
+<div class="alert alert-light border mt-4">
+  <i class="bi bi-satellite text-success"></i> Aucune donnée de télédétection pour le moment.
+  Lancez un calcul depuis <a href="{{ url_for('teledetection.calculer') }}">Télédétection → Calculer</a>.
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script>
+const VERT = '#2E7D46', VERT_FONCE = '#1E5631';
+const PALETTE = ['#1E5631','#2E7D46','#4CAF50','#9A7B14','#C9A227','#8D6E63','#00897B','#5C6BC0','#EF6C00','#B71C1C','#546E7A','#7CB342','#00838F'];
+
+const region = {{ par_region|tojson }};
+const culture = {{ par_culture|tojson }};
+const org = {{ par_organisation|tojson }};
+
+new Chart(document.getElementById('chartRegion'), {
+  type: 'bar',
+  data: { labels: region.labels, datasets: [{ label: 'Superficie (ha)', data: region.superficie, backgroundColor: VERT }] },
+  options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+});
+new Chart(document.getElementById('chartCulture'), {
+  type: 'doughnut',
+  data: { labels: culture.labels, datasets: [{ data: culture.data, backgroundColor: PALETTE }] },
+  options: { plugins: { legend: { position: 'right', labels: { boxWidth: 12, font: { size: 11 } } } } }
+});
+new Chart(document.getElementById('chartOrg'), {
+  type: 'bar',
+  data: { labels: org.labels, datasets: [{ label: 'Superficie (ha)', data: org.superficie, backgroundColor: VERT_FONCE }] },
+  options: { indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true } } }
+});
+
+{% if teledetection.actif %}
+const vigueur = {{ teledetection.vigueur|tojson }};
+const stress = {{ teledetection.stress|tojson }};
+new Chart(document.getElementById('chartVigueur'), {
+  type: 'doughnut',
+  data: { labels: vigueur.labels, datasets: [{ data: vigueur.data, backgroundColor: vigueur.couleurs }] },
+  options: { plugins: { legend: { position: 'right', labels: { boxWidth: 12, font: { size: 11 } } } } }
+});
+new Chart(document.getElementById('chartStress'), {
+  type: 'bar',
+  data: { labels: stress.labels, datasets: [{ label: 'Parcelles', data: stress.data, backgroundColor: stress.couleurs }] },
+  options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+});
+{% endif %}
+</script>
+{% endblock %}

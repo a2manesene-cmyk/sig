@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Rendements de référence — ANCAR SIG{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h3 class="ancar-title mb-0">Rendements réels (calibration)</h3>
+  <a href="{{ url_for('rendement.liste') }}" class="btn btn-outline-secondary btn-sm">Retour</a>
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-5">
+    <div class="card border-0 shadow-sm"><div class="card-body">
+      <h6 class="text-muted text-uppercase small mb-3">Saisir un rendement mesuré</h6>
+      <form method="POST">
+        <div class="mb-2">
+          <label class="form-label">Code parcelle</label>
+          <input name="code" class="form-control" placeholder="ex. P-00001" required>
+        </div>
+        <div class="row g-2">
+          <div class="col-7">
+            <label class="form-label">Rendement (kg/ha)</label>
+            <input name="rendement" type="number" step="1" min="0" class="form-control" required>
+          </div>
+          <div class="col-5">
+            <label class="form-label">Année</label>
+            <input name="annee" type="number" class="form-control" placeholder="2025">
+          </div>
+        </div>
+        <button class="btn ancar-btn mt-3"><i class="bi bi-check-lg"></i> Enregistrer</button>
+      </form>
+      <div class="form-text mt-2">Le pic de NDVI de la parcelle est enregistré automatiquement pour caler le modèle.</div>
+    </div></div>
+  </div>
+
+  <div class="col-lg-7">
+    <div class="card border-0 shadow-sm"><div class="card-body">
+      <h6 class="text-muted text-uppercase small mb-2">Modèles actuels</h6>
+      {% if modeles %}
+        {% for cul, m in modeles.items() %}
+        <div class="small mb-1">{{ cul }} — {{ m.n }} pts · R² {{ '%.2f'|format(m.r2) }}</div>
+        {% endfor %}
+      {% else %}
+        <p class="text-muted small mb-0">Au moins {{ min_points }} points par culture sont nécessaires pour activer l'estimation kg/ha.</p>
+      {% endif %}
+    </div></div>
+
+    <div class="card border-0 shadow-sm mt-3"><div class="card-body p-0"><div class="table-responsive">
+      <table class="table table-sm mb-0">
+        <thead class="table-light"><tr><th>Parcelle</th><th>Culture</th><th>Rdt (kg/ha)</th><th>Pic NDVI</th><th>Année</th></tr></thead>
+        <tbody>
+        {% for r in refs %}
+          <tr><td>{{ r.parcelle.code if r.parcelle else r.parcelle_id }}</td><td>{{ r.culture or '—' }}</td>
+              <td>{{ '%.0f'|format(r.rendement_kg_ha) }}</td>
+              <td>{{ '%.2f'|format(r.ndvi_max) if r.ndvi_max is not none else '—' }}</td>
+              <td>{{ r.annee or '—' }}</td></tr>
+        {% else %}
+          <tr><td colspan="5" class="text-center text-muted py-3">Aucune référence saisie.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div></div></div>
+  </div>
+</div>
+{% endblock %}

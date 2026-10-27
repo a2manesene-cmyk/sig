@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}Comparaison de deux dates — ANCAR SIG{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h3 class="ancar-title mb-0">Comparaison entre deux dates</h3>
+  <a href="{{ url_for('teledetection.carte') }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left"></i> Carte</a>
+</div>
+
+<form method="POST" class="card border-0 shadow-sm mb-3"><div class="card-body">
+  <div class="row g-3">
+    <div class="col-md-3"><label class="form-label small">Période A — début</label>
+      <input type="date" name="a_debut" class="form-control" max="{{ aujourdhui }}" required></div>
+    <div class="col-md-3"><label class="form-label small">Période A — fin</label>
+      <input type="date" name="a_fin" class="form-control" max="{{ aujourdhui }}" required></div>
+    <div class="col-md-3"><label class="form-label small">Période B — début</label>
+      <input type="date" name="b_debut" class="form-control" max="{{ aujourdhui }}" required></div>
+    <div class="col-md-3"><label class="form-label small">Période B — fin</label>
+      <input type="date" name="b_fin" class="form-control" max="{{ aujourdhui }}" required></div>
+    <div class="col-md-4"><label class="form-label small">Indice</label>
+      <select name="indice" class="form-select">
+        <option value="ndvi">NDVI (végétation)</option>
+        <option value="ndmi">NDMI (humidité)</option>
+      </select></div>
+    <div class="col-md-5"><label class="form-label small">Périmètre</label>
+      <select name="region" class="form-select">
+        <option value="">Toutes les parcelles</option>
+        {% for r in regions %}<option value="{{ r.id }}">{{ r.nom }}</option>{% endfor %}
+      </select></div>
+    <div class="col-md-3 d-flex align-items-end">
+      <button class="btn ancar-btn w-100"><i class="bi bi-layers"></i> Comparer</button>
+    </div>
+  </div>
+  <div class="form-text mt-2">Différence pixel-à-pixel (Sentinel-2, 10 m) : B − A. Rouge = baisse, vert = hausse.</div>
+</div></form>
+
+{% if tile_url %}
+<div class="card border-0 shadow-sm"><div class="card-body">
+  <p class="small text-muted mb-2">{{ indice }} — A ({{ a }}) vs B ({{ b }})</p>
+  <div id="map" style="height: 68vh; border-radius: 8px;"></div>
+</div></div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if tile_url %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const map = L.map('map').setView([14.2, -15.6], 8);
+const _osmC = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OSM' });
+const _satC = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, attribution: 'Imagerie © Esri, Maxar' }).addTo(map);
+L.control.layers({ "Satellite (RGB)": _satC, "Plan (OSM)": _osmC }, null, { position: 'topright' }).addTo(map);
+
+// Couche raster de différence (Earth Engine)
+L.tileLayer("{{ tile_url|safe }}", { opacity: 0.85, maxZoom: 19, attribution: 'Sentinel-2 / Earth Engine' }).addTo(map);
+
+// Contours des parcelles + cadrage
+fetch("{{ url_for('parcelles.geojson') }}")
+  .then(r => r.json())
+  .then(data => {
+    if (!data.features.length) return;
+    const outline = L.geoJSON(data, { style: { color: '#000', weight: 0.7, fill: false, opacity: 0.5 } }).addTo(map);
+    map.fitBounds(outline.getBounds(), { padding: [20, 20] });
+  });
+
+// Légende
+const legende = L.control({ position: 'bottomright' });
+legende.onAdd = function () {
+  const div = L.DomUtil.create('div', 'card p-2 shadow-sm');
+  div.style.background = '#fff';
+  div.innerHTML =
+    '<div class="small fw-semibold mb-1">Variation ' + "{{ indice }}" + '</div>' +
+    '<div class="small"><span style="display:inline-block;width:14px;height:14px;background:#a50026;margin-right:4px"></span>Baisse (−0.3)</div>' +
+    '<div class="small"><span style="display:inline-block;width:14px;height:14px;background:#ffffbf;margin-right:4px"></span>Stable (0)</div>' +
+    '<div class="small"><span style="display:inline-block;width:14px;height:14px;background:#006837;margin-right:4px"></span>Hausse (+0.3)</div>';
+  return div;
+};
+legende.addTo(map);
+</script>
+{% endif %}
+{% endblock %}

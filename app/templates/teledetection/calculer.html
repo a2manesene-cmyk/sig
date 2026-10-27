@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Calcul des indices (GEE) — ANCAR SIG{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center"><div class="col-lg-7">
+  <h3 class="ancar-title mb-3">Calcul des indices — Google Earth Engine</h3>
+  <div class="card border-0 shadow-sm"><div class="card-body">
+  <form method="POST">
+    <div class="row g-3">
+      <div class="col-md-6">
+        <label class="form-label">Début de la période observée</label>
+        <input type="date" name="date_debut" class="form-control" max="{{ aujourdhui }}" required>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Fin de la période observée</label>
+        <input type="date" name="date_fin" id="dateFin" class="form-control" max="{{ aujourdhui }}" required>
+        <div class="form-text">Le calcul sera <b>enregistré sous cette date</b> : <span id="recapDate" class="fw-semibold">—</span></div>
+      </div>
+      <div class="col-md-8">
+        <label class="form-label">Périmètre</label>
+        <select name="region" class="form-select">
+          <option value="">Toutes les parcelles</option>
+          {% for r in regions %}<option value="{{ r.id }}">{{ r.nom }}</option>{% endfor %}
+        </select>
+      </div>
+    </div>
+    <div class="mt-3">
+      <button class="btn ancar-btn"><i class="bi bi-cpu"></i> Lancer le calcul</button>
+      <a href="{{ url_for('teledetection.carte') }}" class="btn btn-outline-secondary">Annuler</a>
+    </div>
+  </form>
+
+  <div class="alert alert-light border mt-3 mb-0 small">
+    <i class="bi bi-info-circle text-success"></i>
+    Pour suivre l'<b>évolution</b>, lance le <b>même périmètre</b> à des périodes
+    différentes (chaque période = une date enregistrée). Une fenêtre de 2 à 4 semaines
+    en saison végétative donne un signal net (masquage nuageux automatique).
+  </div>
+  </div></div>
+
+  {% if calculs %}
+  <div class="card border-0 shadow-sm mt-3"><div class="card-body">
+    <h6 class="text-muted text-uppercase small mb-3">Calculs déjà enregistrés</h6>
+    <table class="table table-sm mb-0">
+      <thead class="table-light"><tr><th>Date enregistrée</th><th class="text-end">Parcelles</th></tr></thead>
+      <tbody>
+      {% for d, n in calculs %}
+        <tr><td>{{ d }}</td><td class="text-end">{{ n }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    <div class="form-text mt-2">Relancer un calcul sur une date déjà présente <b>met à jour</b> ces parcelles (pas de doublon).</div>
+  </div></div>
+  {% endif %}
+</div></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const df = document.getElementById('dateFin');
+const recap = document.getElementById('recapDate');
+function maj() { recap.textContent = df.value || '—'; }
+df.addEventListener('change', maj); maj();
+</script>
+{% endblock %}

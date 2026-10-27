@@ -1,0 +1,226 @@
+{% extends "base.html" %}
+{% block title %}Parcelle {{ p.code or p.id }} — ANCAR SIG{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h3 class="ancar-title mb-0"><i class="bi bi-map"></i> Parcelle {{ p.code or ('#' ~ p.id) }}</h3>
+  <div>
+    {% if current_user.niveau >= 2 %}
+    <a href="{{ url_for('parcelles.modifier', pid=p.id) }}" class="btn btn-outline-primary btn-sm"><i class="bi bi-pencil"></i> Modifier</a>
+    {% endif %}
+    <a href="{{ url_for('parcelles.liste') }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left"></i> Retour</a>
+  </div>
+</div>
+
+<div class="row g-3">
+  <!-- Infos -->
+  <div class="col-lg-4">
+    <div class="card border-0 shadow-sm mb-3"><div class="card-body">
+      <div class="mb-2"><span class="text-muted small">Culture</span><br>{{ p.culture or '—' }}</div>
+      <div class="mb-2"><span class="text-muted small">Surface</span><br>{{ '%.2f'|format(p.surface_ha) if p.surface_ha else '—' }} ha</div>
+      <div class="mb-2"><span class="text-muted small">Producteur</span><br>
+        {% if p.producteur %}<a href="{{ url_for('producteurs.fiche', pid=p.producteur.id) }}">{{ p.producteur.nom_complet }}</a>{% else %}—{% endif %}
+      </div>
+      <div class="mb-2"><span class="text-muted small">Filière</span><br>{{ p.filiere.nom if p.filiere else '—' }}</div>
+      <div class="mb-2"><span class="text-muted small">Campagne</span><br>{{ p.campagne.libelle if p.campagne else '—' }}</div>
+      <div class="mb-2"><span class="text-muted small">Localisation</span><br>{{ [p.commune, p.departement]|select|join(', ') or '—' }}</div>
+      <div class="mb-2"><span class="text-muted small"><i class="bi bi-person-vcard"></i> Cartographiée par</span><br>{{ p.animateur or '—' }}</div>
+      {% if p.observations %}<div><span class="text-muted small">Observations</span><br>{{ p.observations }}</div>{% endif %}
+    </div></div>
+    <div class="card border-0 shadow-sm mb-3"><div class="card-body p-2">
+      <div id="map" style="height: 240px; border-radius: 6px;"></div>
+    </div></div>
+
+    <div class="card border-0 shadow-sm"><div class="card-body">
+      <h6 class="text-muted text-uppercase small mb-2">Historique cultural
+        {% if rotation %}<span class="badge {{ 'bg-success' if rotation == 'Rotation' else 'bg-warning' }}">{{ rotation }}</span>{% endif %}
+      </h6>
+      {% if historique %}
+      <table class="table table-sm mb-0">
+        <thead class="table-light"><tr><th>Campagne</th><th>Culture</th></tr></thead>
+        <tbody>
+        {% for h in historique %}
+          <tr><td>{{ h.campagne.libelle if h.campagne else h.annee }}</td><td>{{ h.culture or '—' }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p class="text-muted small mb-0">Aucun historique. Importez-le depuis <a href="{{ url_for('parcelles.import_historique') }}">Parcelles → Historique cultural</a>.</p>
+      {% endif %}
+    </div></div>
+  </div>
+
+  <!-- Lecture agronomique + Courbe -->
+  <div class="col-lg-8">
+    {% if lecture %}
+    <div class="card border-0 shadow-sm mb-3"><div class="card-body">
+      <h6 class="text-muted text-uppercase small mb-3">Lecture agronomique <span class="text-muted">({{ lecture.date }})</span></h6>
+      <div class="row g-3">
+        <div class="col-md-6">
+          <div class="border rounded p-2 h-100">
+            <div class="small text-muted">Vigueur de la végétation</div>
+            <span class="badge bg-{{ lecture.vegetation.classe }}">{{ lecture.vegetation.niveau }}</span>
+            <span class="small">{{ '%.3f'|format(lecture.ndvi_val) if lecture.ndvi_val is not none else '—' }}</span>
+            <div class="small text-muted mt-1">{{ lecture.vegetation.texte }}</div>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <div class="border rounded p-2 h-100">
+            <div class="small text-muted">Humidité / stress hydrique</div>
+            <span class="badge bg-{{ lecture.hydrique.classe }}">{{ lecture.hydrique.niveau }}</span>
+            <span class="small">{{ '%.3f'|format(lecture.ndmi_val) if lecture.ndmi_val is not none else '—' }}</span>
+            <div class="small text-muted mt-1">{{ lecture.hydrique.texte }}</div>
+          </div>
+        </div>
+        {% if lecture.conseil %}
+        <div class="col-12">
+          <div class="alert alert-light border mb-0 small"><i class="bi bi-lightbulb text-success"></i> <b>Fertilisation :</b> {{ lecture.conseil }}</div>
+        </div>
+        {% endif %}
+      </div>
+    </div></div>
+    {% endif %}
+
+    <div class="card border-0 shadow-sm"><div class="card-body">
+      <h6 class="text-muted text-uppercase small mb-3">Évolution des indices de végétation</h6>
+      {% if serie.dates %}
+        <canvas id="chartIndices" height="120"></canvas>
+        <div class="table-responsive mt-3">
+        <table class="table table-sm mb-0">
+          <thead class="table-light"><tr><th>Date</th><th>NDVI</th><th>NDWI</th><th>NDMI</th><th>SAVI</th><th>EVI</th></tr></thead>
+          <tbody>
+          {% for iv in indices %}
+            <tr>
+              <td>{{ iv.date }}</td>
+              <td>{{ '%.3f'|format(iv.ndvi) if iv.ndvi is not none else '—' }}</td>
+              <td>{{ '%.3f'|format(iv.ndwi) if iv.ndwi is not none else '—' }}</td>
+              <td>{{ '%.3f'|format(iv.ndmi) if iv.ndmi is not none else '—' }}</td>
+              <td>{{ '%.3f'|format(iv.savi) if iv.savi is not none else '—' }}</td>
+              <td>{{ '%.3f'|format(iv.evi) if iv.evi is not none else '—' }}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        </div>
+      {% else %}
+        <p class="text-muted">Aucun indice calculé pour cette parcelle. Lancez un calcul depuis <a href="{{ url_for('teledetection.calculer') }}">Télédétection → Calculer (GEE)</a>.</p>
+      {% endif %}
+    </div></div>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm mt-3"><div class="card-body">
+  <div class="d-flex justify-content-between align-items-center mb-2">
+    <h6 class="mb-0"><i class="bi bi-images text-success"></i> Évolution de la parcelle en vraies couleurs — 4 étapes depuis le 15 mai</h6>
+    <button id="btnEvol" class="btn btn-outline-success btn-sm"><i class="bi bi-play-circle"></i> Charger l'évolution</button>
+  </div>
+  <div id="evolMsg" class="text-muted small mb-2">Cliquez pour afficher l'image satellite réelle de la parcelle à 4 périodes (montre la variabilité et l'évolution du couvert).</div>
+  <div class="fw-semibold small mb-1">Vraies couleurs (RGB)</div>
+  <div id="evolGrid" class="row g-2"></div>
+  <div class="fw-semibold small mt-3 mb-1">Humidité (NDMI)
+    <span class="ms-2 small text-muted align-middle">Sec
+      <span style="display:inline-block;width:90px;height:11px;border:1px solid #999;vertical-align:middle;background:linear-gradient(to right,#ffffff,#1565C0)"></span>
+      Humide</span>
+  </div>
+  <div id="evolGridNdmi" class="row g-2"></div>
+</div></div>
+{% endblock %}
+
+{% block scripts %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script>
+// Mini-carte
+const map = L.map('map').setView([14.5, -15.5], 8);
+const _satMini = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, attribution: 'Imagerie © Esri' }).addTo(map);
+const _osmMini = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OSM' });
+L.control.layers({ "Satellite (RGB)": _satMini, "Plan (OSM)": _osmMini }, null, { position: 'topright', collapsed: true }).addTo(map);
+fetch("{{ url_for('parcelles.parcelle_geojson', pid=p.id) }}")
+  .then(r => r.json())
+  .then(data => {
+    if (!data.features.length) return;
+    const layer = L.geoJSON(data, { style: { color: '#1E5631', weight: 2, fillColor: '#2E7D46', fillOpacity: 0.4 } }).addTo(map);
+    map.fitBounds(layer.getBounds(), { padding: [15, 15], maxZoom: 16 });
+  });
+
+// Courbe d'évolution
+const serie = {{ serie|tojson }};
+{% if serie.dates %}
+const couleurs = { ndvi:'#1E5631', ndwi:'#1565C0', ndmi:'#00897B', savi:'#7CB342', evi:'#9A7B14' };
+new Chart(document.getElementById('chartIndices'), {
+  type: 'line',
+  data: {
+    labels: serie.dates,
+    datasets: ['ndvi','ndwi','ndmi','savi','evi'].map(k => ({
+      label: k.toUpperCase(), data: serie[k],
+      borderColor: couleurs[k], backgroundColor: couleurs[k],
+      tension: 0.3, spanGaps: true, pointRadius: 3
+    }))
+  },
+  options: { scales: { y: { suggestedMin: -0.2, suggestedMax: 0.9 } },
+    plugins: { legend: { position: 'bottom', labels: { boxWidth: 12 } } } }
+});
+{% endif %}
+
+// --- Évolution en 4 étapes (RGB) ---
+(function () {
+  const btn = document.getElementById('btnEvol');
+  const grid = document.getElementById('evolGrid');
+  const msg = document.getElementById('evolMsg');
+  if (!btn) return;
+  btn.addEventListener('click', function () {
+    btn.disabled = true;
+    msg.textContent = "Calcul en cours (Sentinel-2)… cela peut prendre quelques secondes.";
+    grid.innerHTML = "";
+    fetch("{{ url_for('parcelles.evolution', pid=p.id) }}")
+      .then(r => r.json())
+      .then(d => {
+        btn.disabled = false;
+        if (d.error) { msg.textContent = "Erreur : " + d.error; return; }
+        msg.textContent = "Image satellite réelle de la parcelle à 4 périodes (du plus ancien au plus récent).";
+        const outline = { type: "Feature", geometry: d.geometry };
+        const gridNdmi = document.getElementById('evolGridNdmi');
+        if (gridNdmi) gridNdmi.innerHTML = "";
+        d.stages.forEach((st, i) => {
+          const col = document.createElement('div');
+          col.className = "col-6 col-md-3";
+          col.innerHTML =
+            '<div class="border rounded p-1">' +
+            '<div class="small fw-semibold text-center mb-1">Étape ' + (i + 1) + ' · ' + st.label + '</div>' +
+            '<div id="evol' + i + '" style="height:150px;border-radius:4px;background:#eee"></div>' +
+            (st.url ? '' : '<div class="small text-muted text-center mt-1">Pas d\'image (nuages)</div>') +
+            '</div>';
+          grid.appendChild(col);
+          const m = L.map('evol' + i, { zoomControl: false, attributionControl: false,
+            dragging: false, scrollWheelZoom: false, doubleClickZoom: false });
+          L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(m);
+          if (st.url) L.tileLayer(st.url, { opacity: 1 }).addTo(m);
+          const gl = L.geoJSON(outline, { style: { color: "#FFD400", weight: 2, fill: false } }).addTo(m);
+          m.fitBounds(gl.getBounds(), { padding: [6, 6] });
+
+          // Rangée NDMI (mêmes 4 étapes)
+          if (gridNdmi) {
+            const colN = document.createElement('div');
+            colN.className = "col-6 col-md-3";
+            colN.innerHTML =
+              '<div class="border rounded p-1">' +
+              '<div class="small fw-semibold text-center mb-1">Étape ' + (i + 1) + ' · ' + st.label + '</div>' +
+              '<div id="evoln' + i + '" style="height:150px;border-radius:4px;background:#eee"></div>' +
+              (st.ndmi_url ? '' : '<div class="small text-muted text-center mt-1">Pas d\'image (nuages)</div>') +
+              '</div>';
+            gridNdmi.appendChild(colN);
+            const mn = L.map('evoln' + i, { zoomControl: false, attributionControl: false,
+              dragging: false, scrollWheelZoom: false, doubleClickZoom: false });
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(mn);
+            if (st.ndmi_url) L.tileLayer(st.ndmi_url, { opacity: 0.9 }).addTo(mn);
+            const gln = L.geoJSON(outline, { style: { color: "#333", weight: 2, fill: false } }).addTo(mn);
+            mn.fitBounds(gln.getBounds(), { padding: [6, 6] });
+          }
+        });
+      })
+      .catch(e => { btn.disabled = false; msg.textContent = "Erreur de chargement : " + e; });
+  });
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}Producteurs — ANCAR SIG{% endblock %}
+
+{% macro qs(page) -%}
+?q={{ q|urlencode }}&region={{ region_id or '' }}&organisation={{ op_id or '' }}&page={{ page }}
+{%- endmacro %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h3 class="ancar-title mb-0">Producteurs <span class="badge ancar-badge">{{ pagination.total }}</span></h3>
+  <div>
+    <a href="{{ url_for('producteurs.organisations') }}" class="btn btn-outline-success btn-sm"><i class="bi bi-building"></i> Organisations</a>
+    <a href="{{ url_for('producteurs.export_xlsx', q=q, region=region_id or '', organisation=op_id or '') }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-file-earmark-excel"></i> Export Excel</a>
+    {% if current_user.niveau >= 2 %}
+    <a href="{{ url_for('producteurs.importer') }}" class="btn ancar-btn btn-sm"><i class="bi bi-upload"></i> Peupler</a>
+    {% endif %}
+  </div>
+</div>
+
+<form method="GET" class="card border-0 shadow-sm mb-3"><div class="card-body">
+  <div class="row g-2 align-items-end">
+    <div class="col-md-5">
+      <label class="form-label small mb-1">Recherche (nom ou téléphone)</label>
+      <input type="text" name="q" value="{{ q }}" class="form-control" placeholder="Nom, prénom ou numéro…">
+    </div>
+    <div class="col-md-3">
+      <label class="form-label small mb-1">Région</label>
+      <select name="region" class="form-select">
+        <option value="">Toutes</option>
+        {% for r in regions %}<option value="{{ r.id }}" {{ 'selected' if region_id == r.id }}>{{ r.nom }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="col-md-2">
+      <label class="form-label small mb-1">Organisation</label>
+      <select name="organisation" class="form-select">
+        <option value="">Toutes</option>
+        {% for o in organisations %}<option value="{{ o.id }}" {{ 'selected' if op_id == o.id }}>{{ o.nom }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="col-md-2 d-grid gap-1">
+      <button class="btn ancar-btn btn-sm"><i class="bi bi-search"></i> Rechercher</button>
+      <a href="{{ url_for('producteurs.liste') }}" class="btn btn-outline-secondary btn-sm">Réinitialiser</a>
+    </div>
+  </div>
+</div></form>
+
+<div class="card border-0 shadow-sm"><div class="card-body p-0">
+<div class="table-responsive">
+<table class="table table-hover mb-0 align-middle">
+  <thead class="table-light">
+    <tr><th>Nom</th><th>Téléphone</th><th>Sexe</th><th>Organisation</th><th>Région</th>
+        <th class="text-end">Parcelles</th><th class="text-end">Superficie (ha)</th></tr>
+  </thead>
+  <tbody>
+  {% for pr in producteurs %}
+    {% set stat = agg.get(pr.id, (0, 0)) %}
+    <tr>
+      <td class="fw-semibold"><a href="{{ url_for('producteurs.fiche', pid=pr.id) }}" class="text-decoration-none">{{ pr.nom_complet }}</a></td>
+      <td>{{ pr.telephone or '—' }}</td>
+      <td>{{ pr.sexe or '—' }}</td>
+      <td>{{ pr.organisation.nom if pr.organisation else '—' }}</td>
+      <td>{{ pr.region.nom if pr.region else '—' }}</td>
+      <td class="text-end"><span class="badge bg-success">{{ stat[0] }}</span></td>
+      <td class="text-end">{{ '%.2f'|format(stat[1]) }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="7" class="text-center text-muted py-4">Aucun producteur ne correspond aux critères.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+</div></div>
+
+{% if pagination.pages > 1 %}
+<nav class="mt-3"><ul class="pagination pagination-sm justify-content-center">
+  <li class="page-item {{ 'disabled' if not pagination.has_prev }}">
+    <a class="page-link" href="{{ qs(pagination.prev_num) if pagination.has_prev else '#' }}">Précédent</a>
+  </li>
+  <li class="page-item disabled"><span class="page-link">Page {{ pagination.page }} / {{ pagination.pages }}</span></li>
+  <li class="page-item {{ 'disabled' if not pagination.has_next }}">
+    <a class="page-link" href="{{ qs(pagination.next_num) if pagination.has_next else '#' }}">Suivant</a>
+  </li>
+</ul></nav>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,43 @@
+# Secrets / configuration locale (NE JAMAIS COMMITER)
+config.py
+.env
+app/notifications/settings.py
+
+# Données personnelles (producteurs : noms, téléphones)
+*.geojson
+*.gpkg
+*.shp
+*.shx
+*.dbf
+donnees/
+data/
+uploads/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Environnements virtuels
+venv/
+.venv/
+env/
+
+# Fichiers générés
+app/static/audio/
+*.log
+server.log
+*.sqlite
+*.db
+
+# Sauvegardes / archives
+*.zip
+*.bak
+*.dump
+*.sql
+
+# OS / éditeurs
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

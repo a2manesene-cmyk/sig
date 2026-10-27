@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block title %}Parcelles — ANCAR SIG{% endblock %}
+
+{% macro qs(page) -%}
+?q={{ q|urlencode }}&culture={{ (culture or '')|urlencode }}&region={{ region_id or '' }}&campagne={{ campagne_id or '' }}&page={{ page }}
+{%- endmacro %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h3 class="ancar-title mb-0">Parcelles <span class="badge ancar-badge">{{ pagination.total }}</span></h3>
+  <div>
+    <a href="{{ url_for('parcelles.carte') }}" class="btn btn-outline-success btn-sm"><i class="bi bi-globe-europe-africa"></i> Carte</a>
+    {% if current_user.niveau >= 2 %}
+    <a href="{{ url_for('parcelles.importer') }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-upload"></i> Importer</a>
+    <a href="{{ url_for('parcelles.import_historique') }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-clock-history"></i> Historique</a>
+    <a href="{{ url_for('parcelles.creer') }}" class="btn ancar-btn btn-sm"><i class="bi bi-plus-lg"></i> Nouvelle</a>
+    {% endif %}
+  </div>
+</div>
+
+<form method="GET" class="card border-0 shadow-sm mb-3"><div class="card-body">
+  <div class="row g-2 align-items-end">
+    <div class="col-md-4">
+      <label class="form-label small mb-1">Recherche (code)</label>
+      <input type="text" name="q" value="{{ q }}" class="form-control" placeholder="Code parcelle…">
+    </div>
+    <div class="col-md-3">
+      <label class="form-label small mb-1">Culture</label>
+      <select name="culture" class="form-select">
+        <option value="">Toutes</option>
+        {% for c in cultures %}<option value="{{ c }}" {{ 'selected' if culture == c }}>{{ c }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="col-md-2">
+      <label class="form-label small mb-1">Région</label>
+      <select name="region" class="form-select">
+        <option value="">Toutes</option>
+        {% for r in regions %}<option value="{{ r.id }}" {{ 'selected' if region_id == r.id }}>{{ r.nom }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="col-md-2">
+      <label class="form-label small mb-1">Campagne</label>
+      <select name="campagne" class="form-select">
+        <option value="">Toutes</option>
+        {% for c in campagnes %}<option value="{{ c.id }}" {{ 'selected' if campagne_id == c.id }}>{{ c.libelle }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="col-md-1 d-grid">
+      <button class="btn ancar-btn btn-sm"><i class="bi bi-search"></i></button>
+    </div>
+  </div>
+  {% if q or culture or region_id or campagne_id %}
+  <div class="mt-2"><a href="{{ url_for('parcelles.liste') }}" class="small">Réinitialiser les filtres</a></div>
+  {% endif %}
+</div></form>
+
+<div class="row g-3">
+{% for v in vues %}
+  <div class="col-sm-6 col-lg-4 col-xl-3">
+    <div class="card h-100 border-0 shadow-sm parcelle-card">
+      <div class="card-body pb-2">
+        <div class="d-flex justify-content-between align-items-start">
+          <a href="{{ url_for('parcelles.fiche', pid=v.p.id) }}" class="fw-semibold text-decoration-none">{{ v.p.code or ('#' ~ v.p.id) }}</a>
+          <div>
+            {% if v.alerte %}<span class="badge bg-danger" title="Stress hydrique"><i class="bi bi-droplet-fill"></i></span>{% endif %}
+            {% if v.p.geom is not none %}<span class="badge bg-success-subtle text-success" title="Géolocalisée"><i class="bi bi-geo-alt-fill"></i></span>{% endif %}
+          </div>
+        </div>
+        <div class="text-muted small mb-2">
+          {{ v.p.culture or '—' }}{% if v.p.surface_ha %} · {{ '%.2f'|format(v.p.surface_ha) }} ha{% endif %}
+        </div>
+        <div class="small"><i class="bi bi-person text-muted"></i>
+          {% if v.p.producteur %}<a href="{{ url_for('producteurs.fiche', pid=v.p.producteur.id) }}" class="text-decoration-none">{{ v.p.producteur.nom_complet }}</a>{% else %}—{% endif %}
+        </div>
+        <div class="small text-muted"><i class="bi bi-geo-alt"></i> {{ v.p.producteur.region.nom if v.p.producteur and v.p.producteur.region else '—' }}</div>
+        {% if v.veg %}
+        <div class="mt-2">
+          <span class="badge bg-{{ v.veg.classe }}">{{ v.veg.niveau }}</span>
+          <span class="small text-muted">NDVI {{ '%.2f'|format(v.ndvi) }}</span>
+        </div>
+        {% endif %}
+        {% if v.hist %}
+        <div class="small text-muted mt-1"><i class="bi bi-clock-history"></i> {{ v.hist[1] }} <span class="text-muted">({{ v.hist[0] }})</span></div>
+        {% endif %}
+      </div>
+      <div class="card-footer bg-white border-0 pt-0">
+        <div class="d-flex gap-1">
+          <a href="{{ url_for('parcelles.fiche', pid=v.p.id) }}" class="btn btn-sm btn-outline-success flex-grow-1">Voir la fiche</a>
+          {% if current_user.niveau >= 2 %}
+          <a href="{{ url_for('parcelles.modifier', pid=v.p.id) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil"></i></a>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+{% else %}
+  <div class="col-12"><div class="text-center text-muted py-5">Aucune parcelle ne correspond aux critères.</div></div>
+{% endfor %}
+</div>
+
+{% if pagination.pages > 1 %}
+<nav class="mt-4"><ul class="pagination pagination-sm justify-content-center">
+  <li class="page-item {{ 'disabled' if not pagination.has_prev }}">
+    <a class="page-link" href="{{ qs(pagination.prev_num) if pagination.has_prev else '#' }}">Précédent</a>
+  </li>
+  <li class="page-item disabled"><span class="page-link">Page {{ pagination.page }} / {{ pagination.pages }}</span></li>
+  <li class="page-item {{ 'disabled' if not pagination.has_next }}">
+    <a class="page-link" href="{{ qs(pagination.next_num) if pagination.has_next else '#' }}">Suivant</a>
+  </li>
+</ul></nav>
+{% endif %}
+{% endblock %}

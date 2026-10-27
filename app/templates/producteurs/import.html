@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Peupler les producteurs — ANCAR{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center"><div class="col-lg-7">
+  <h3 class="ancar-title mb-3">Peupler les producteurs (GeoJSON)</h3>
+  <div class="card border-0 shadow-sm"><div class="card-body">
+  <form method="POST" enctype="multipart/form-data">
+    <div class="mb-3">
+      <label class="form-label">Fichier GeoJSON (le même que pour les parcelles)</label>
+      <input type="file" name="fichier" accept=".geojson,.json,application/geo+json" class="form-control" required>
+    </div>
+    <button class="btn ancar-btn"><i class="bi bi-people-fill"></i> Peupler</button>
+    <a href="{{ url_for('producteurs.liste') }}" class="btn btn-outline-secondary">Annuler</a>
+  </form>
+  <div class="text-muted small mt-3">
+    <i class="bi bi-info-circle"></i> Cette opération :
+    <ul class="mb-0">
+      <li>crée les <b>producteurs</b> (nom, téléphone, sexe) sans doublon ;</li>
+      <li>crée les <b>organisations</b> à partir de « Nom cooperative » ;</li>
+      <li>rattache chaque <b>parcelle</b> à son producteur (via le code P-xxxxx) ;</li>
+      <li>renseigne la <b>filière</b> (d'après la culture) et la <b>campagne active</b>.</li>
+    </ul>
+  </div>
+  </div></div>
+</div></div>
+{% endblock %}

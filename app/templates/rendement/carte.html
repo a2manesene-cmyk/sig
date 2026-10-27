@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Carte du rendement — ANCAR SIG{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-2">
+  <h3 class="ancar-title mb-0">Potentiel de rendement — carte</h3>
+  <a href="{{ url_for('rendement.liste') }}" class="btn btn-outline-secondary btn-sm">Liste</a>
+</div>
+<div id="map" style="height:72vh;border-radius:8px;box-shadow:0 1px 4px rgba(0,0,0,.1)"></div>
+<p id="msg" class="text-muted small mt-2"></p>
+{% endblock %}
+{% block scripts %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const map=L.map('map').setView([14.2,-15.6],7);
+const _osmR=L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OSM'});
+const _satR=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,attribution:'Imagerie © Esri, Maxar'}).addTo(map);
+L.control.layers({ "Satellite (RGB)": _satR, "Plan (OSM)": _osmR }, null, { position:'topright' }).addTo(map);
+function couleur(v){ if(v==null)return '#bdbdbd';
+  if(v<34) return '#d73027';      // mauvais
+  if(v<67) return '#f4c430';      // moyen
+  return '#1a9850';               // bon
+}
+fetch("{{ url_for('rendement.geojson') }}").then(r=>r.json()).then(d=>{
+  if(!d.features.length){document.getElementById('msg').textContent="Aucune parcelle avec relevé NDVI.";return;}
+  const layer=L.geoJSON(d,{style:f=>({color:'#555',weight:1,fillColor:couleur(f.properties.indice),fillOpacity:.75}),
+    onEachFeature:(f,l)=>{const p=f.properties;
+      l.bindPopup(`<b>${p.code}</b><br>${p.culture||'—'}<br>Potentiel : <b>${p.indice??'—'}</b>/100`+
+        (p.estimation!=null?`<br>Estimé : <b>${p.estimation}</b> kg/ha`:'')+
+        `<br><a href="/parcelles/${p.id}/fiche">Voir la fiche</a>`);}}).addTo(map);
+  map.fitBounds(layer.getBounds(),{padding:[20,20]});
+  document.getElementById('msg').textContent=`${d.features.length} parcelle(s) — potentiel de rendement`;
+});
+const lg=L.control({position:'bottomright'});lg.onAdd=function(){const d=L.DomUtil.create('div','card p-2 shadow-sm');d.style.background='#fff';
+  d.innerHTML='<div class="small fw-semibold mb-1">Potentiel</div>'+
+    '<div class="small"><span style="display:inline-block;width:14px;height:14px;background:'+couleur(10)+';margin-right:4px"></span>Faible</div>'+
+    '<div class="small"><span style="display:inline-block;width:14px;height:14px;background:'+couleur(50)+';margin-right:4px"></span>Moyen</div>'+
+    '<div class="small"><span style="display:inline-block;width:14px;height:14px;background:'+couleur(90)+';margin-right:4px"></span>Élevé</div>';return d;};lg.addTo(map);
+</script>
+{% endblock %}

@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}Rendement — ANCAR SIG{% endblock %}
+{% macro qs(page) %}?culture={{ (culture or '')|urlencode }}&page={{ page }}{% endmacro %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h3 class="ancar-title mb-0">Estimation du rendement</h3>
+  <div>
+    <a href="{{ url_for('rendement.carte') }}" class="btn btn-outline-success btn-sm"><i class="bi bi-globe-europe-africa"></i> Carte</a>
+    <a href="{{ url_for('rendement.ia') }}" class="btn btn-outline-info btn-sm"><i class="bi bi-cpu"></i> Estimation IA</a>
+    {% if current_user.niveau >= 2 %}
+    <a href="{{ url_for('rendement.references') }}" class="btn ancar-btn btn-sm"><i class="bi bi-plus-lg"></i> Saisir un rendement réel</a>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm mb-3"><div class="card-body">
+  <h6 class="text-muted text-uppercase small mb-2">Modèles de calibration (kg/ha)</h6>
+  {% if modeles %}
+  <table class="table table-sm mb-0" style="max-width:640px">
+    <thead class="table-light"><tr><th>Culture</th><th>Points</th><th>Qualité (R²)</th><th>Relation</th></tr></thead>
+    <tbody>
+    {% for cul, m in modeles.items() %}
+      <tr><td>{{ cul }}</td><td>{{ m.n }}</td>
+        <td><span class="badge bg-{{ 'success' if m.r2>=0.6 else ('warning' if m.r2>=0.3 else 'secondary') }}">{{ '%.2f'|format(m.r2) }}</span></td>
+        <td class="small text-muted">rdt ≈ {{ '%.0f'|format(m.a) }}·NDVI + {{ '%.0f'|format(m.b) }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <div class="form-text mt-1">Ces relations sont recalculées à chaque nouvelle saisie de rendement réel.</div>
+  {% else %}
+  <p class="text-muted small mb-0">Aucun modèle kg/ha pour l'instant : il faut au moins <b>{{ min_points }}</b> rendements réels par culture (avec NDVI calculé). En attendant, l'<b>indice de potentiel (0–100)</b> reste disponible ci-dessous.</p>
+  {% endif %}
+</div></div>
+
+<form method="GET" class="mb-3">
+  <div class="d-flex gap-2 align-items-end">
+    <div><label class="form-label small mb-1">Culture</label>
+      <select name="culture" class="form-select form-select-sm" onchange="this.form.submit()">
+        <option value="">Toutes ({{ total }})</option>
+        {% for c in cultures %}<option value="{{ c }}" {{ 'selected' if culture==c }}>{{ c }}</option>{% endfor %}
+      </select></div>
+  </div>
+</form>
+
+<div class="card border-0 shadow-sm"><div class="card-body p-0"><div class="table-responsive">
+<table class="table table-hover mb-0 align-middle">
+  <thead class="table-light"><tr>
+    <th>Parcelle</th><th>Culture</th><th>Commune</th><th>Relevés</th>
+    <th>Pic NDVI</th><th>Potentiel (0–100)</th><th>Rendement estimé</th></tr></thead>
+  <tbody>
+  {% for v in vues %}
+    <tr>
+      <td><a href="{{ url_for('parcelles.fiche', pid=v.p.id) }}" class="text-decoration-none">{{ v.p.code }}</a></td>
+      <td>{{ v.p.culture or '—' }}</td>
+      <td>{{ v.p.commune or '—' }}</td>
+      <td>{{ v.n }}</td>
+      <td>{{ '%.2f'|format(v.ndvi_max) if v.ndvi_max is not none else '—' }}</td>
+      <td>
+        {% if v.indice is not none %}
+        <div class="d-flex align-items-center gap-2">
+          <div class="progress flex-grow-1" style="height:8px;max-width:120px">
+            <div class="progress-bar bg-success" style="width:{{ v.indice }}%"></div>
+          </div><span class="small">{{ v.indice }}</span>
+        </div>
+        {% else %}—{% endif %}
+      </td>
+      <td>{% if v.estimation is not none %}<b>{{ '{:,}'.format(v.estimation).replace(',', ' ') }}</b> kg/ha{% else %}<span class="text-muted small">n/d</span>{% endif %}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="7" class="text-center text-muted py-4">Aucune parcelle avec relevé NDVI. Lancez d'abord des calculs d'indices (Télédétection).</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div></div></div>
+
+{% if pagination.pages > 1 %}
+<nav class="mt-3"><ul class="pagination pagination-sm justify-content-center">
+  <li class="page-item {{ 'disabled' if not pagination.has_prev }}"><a class="page-link" href="{{ qs(pagination.prev_num) if pagination.has_prev else '#' }}">Précédent</a></li>
+  <li class="page-item disabled"><span class="page-link">Page {{ pagination.page }} / {{ pagination.pages }}</span></li>
+  <li class="page-item {{ 'disabled' if not pagination.has_next }}"><a class="page-link" href="{{ qs(pagination.next_num) if pagination.has_next else '#' }}">Suivant</a></li>
+</ul></nav>
+{% endif %}
+
+<p class="text-muted small mt-3"><i class="bi bi-info-circle"></i> Le <b>potentiel</b> (0–100) reflète la vigueur au pic de saison (proxy de biomasse). Le <b>rendement estimé</b> n'apparaît que pour les cultures disposant d'un modèle calibré.</p>
+{% endblock %}

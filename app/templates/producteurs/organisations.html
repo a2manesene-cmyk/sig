@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Organisations de producteurs — ANCAR SIG{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h3 class="ancar-title mb-0">Organisations de producteurs <span class="badge ancar-badge">{{ lignes|length }}</span></h3>
+  <a href="{{ url_for('producteurs.liste') }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-people"></i> Producteurs</a>
+</div>
+
+<form method="GET" class="card border-0 shadow-sm mb-3"><div class="card-body">
+  <div class="row g-2 align-items-end">
+    <div class="col-md-5">
+      <label class="form-label small mb-1">Recherche (nom)</label>
+      <input type="text" name="q" value="{{ q }}" class="form-control" placeholder="Nom de la coopérative…">
+    </div>
+    <div class="col-md-3">
+      <label class="form-label small mb-1">Région</label>
+      <select name="region" class="form-select">
+        <option value="">Toutes</option>
+        {% for r in regions %}<option value="{{ r.id }}" {{ 'selected' if region_id == r.id }}>{{ r.nom }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label small mb-1">Filière</label>
+      <select name="filiere" class="form-select">
+        <option value="">Toutes</option>
+        {% for f in filieres %}<option value="{{ f.id }}" {{ 'selected' if filiere_id == f.id }}>{{ f.nom }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="col-md-1 d-grid">
+      <button class="btn ancar-btn btn-sm"><i class="bi bi-search"></i></button>
+    </div>
+  </div>
+  {% if q or region_id or filiere_id %}
+  <div class="mt-2"><a href="{{ url_for('producteurs.organisations') }}" class="small">Réinitialiser les filtres</a></div>
+  {% endif %}
+</div></form>
+
+<div class="row g-3">
+{% for o in lignes %}
+  <div class="col-sm-6 col-lg-4">
+    <div class="card h-100 border-0 shadow-sm parcelle-card">
+      <div class="card-body pb-2">
+        <div class="d-flex justify-content-between align-items-start">
+          <span class="fw-semibold">{{ o.nom }}</span>
+          {% if o.alertes %}<span class="badge bg-danger" title="Parcelles en stress hydrique"><i class="bi bi-droplet-fill"></i> {{ o.alertes }}</span>{% endif %}
+        </div>
+        <div class="small text-muted mb-2">{{ o.type or 'Organisation' }}{% if o.region %} · {{ o.region }}{% endif %}</div>
+        <div class="row text-center g-2 my-1">
+          <div class="col-4"><div class="fw-semibold">{{ o.nb_prod }}</div><div class="small text-muted">Prod.</div></div>
+          <div class="col-4"><div class="fw-semibold">{{ o.nb_parc }}</div><div class="small text-muted">Parcelles</div></div>
+          <div class="col-4"><div class="fw-semibold">{{ '%.0f'|format(o.surface) }}</div><div class="small text-muted">ha</div></div>
+        </div>
+        {% if o.filieres %}
+        <div class="mt-2">
+          {% for f in o.filieres %}<span class="badge bg-success-subtle text-success border border-success-subtle">{{ f }}</span> {% endfor %}
+        </div>
+        {% endif %}
+      </div>
+      <div class="card-footer bg-white border-0 pt-0">
+        <a href="{{ url_for('producteurs.liste', organisation=o.id) }}" class="btn btn-sm btn-outline-success w-100"><i class="bi bi-people"></i> Voir les producteurs</a>
+      </div>
+    </div>
+  </div>
+{% else %}
+  <div class="col-12"><div class="text-center text-muted py-5">Aucune organisation ne correspond aux critères.</div></div>
+{% endfor %}
+</div>
+{% endblock %}

@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Réinitialisation des données — ANCAR SIG{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center"><div class="col-lg-8">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h3 class="ancar-title mb-0"><i class="bi bi-exclamation-octagon text-danger"></i> Réinitialisation des données</h3>
+    <a href="{{ url_for('utilisateurs.liste') }}" class="btn btn-outline-secondary btn-sm">Retour</a>
+  </div>
+
+  <div class="alert alert-warning">
+    <b>Attention :</b> la suppression est <b>définitive</b>. Faites une sauvegarde de la base avant si nécessaire.
+    Cette page permet de repartir sur des données propres avant de réimporter.
+  </div>
+
+  <div class="card border-0 shadow-sm mb-3"><div class="card-body">
+    <h6 class="text-muted text-uppercase small mb-2">Données actuelles</h6>
+    <div class="row text-center g-2">
+      <div class="col"><div class="fw-semibold fs-5">{{ counts.parcelles }}</div><div class="small text-muted">Parcelles</div></div>
+      <div class="col"><div class="fw-semibold fs-5">{{ counts.producteurs }}</div><div class="small text-muted">Producteurs</div></div>
+      <div class="col"><div class="fw-semibold fs-5">{{ counts.organisations }}</div><div class="small text-muted">Organisations</div></div>
+      <div class="col"><div class="fw-semibold fs-5">{{ counts.indices }}</div><div class="small text-muted">Indices</div></div>
+      <div class="col"><div class="fw-semibold fs-5">{{ counts.historique }}</div><div class="small text-muted">Historique</div></div>
+    </div>
+  </div></div>
+
+  <form method="POST" action="{{ url_for('utilisateurs.reset') }}" onsubmit="return confirm('Confirmer la suppression définitive des données sélectionnées ?');">
+    <div class="card border-0 shadow-sm"><div class="card-body">
+      <h6 class="text-muted text-uppercase small mb-3">Que réinitialiser ?</h6>
+
+      <div class="form-check mb-2">
+        <input class="form-check-input" type="radio" name="cible" id="c1" value="indices">
+        <label class="form-check-label" for="c1">Indices de télédétection uniquement</label>
+      </div>
+      <div class="form-check mb-2">
+        <input class="form-check-input" type="radio" name="cible" id="c2" value="historique">
+        <label class="form-check-label" for="c2">Historique cultural uniquement</label>
+      </div>
+      <div class="form-check mb-2">
+        <input class="form-check-input" type="radio" name="cible" id="c3" value="parcelles" checked>
+        <label class="form-check-label" for="c3"><b>Parcelles</b> (+ indices + historique liés)</label>
+      </div>
+      <div class="form-check mb-2">
+        <input class="form-check-input" type="radio" name="cible" id="c4" value="parcelles_prod">
+        <label class="form-check-label" for="c4">Parcelles <b>+ Producteurs</b> (+ indices + historique)</label>
+      </div>
+      <div class="form-check mb-3">
+        <input class="form-check-input" type="radio" name="cible" id="c5" value="tout">
+        <label class="form-check-label" for="c5"><b>Tout</b> : parcelles, producteurs, organisations, indices, historique</label>
+      </div>
+
+      <hr>
+      <div class="form-check mb-3">
+        <input class="form-check-input" type="checkbox" name="confirmer" id="confirmer" required>
+        <label class="form-check-label" for="confirmer">Je confirme vouloir supprimer définitivement les données sélectionnées.</label>
+      </div>
+
+      <button class="btn btn-danger"><i class="bi bi-trash"></i> Réinitialiser</button>
+    </div></div>
+  </form>
+
+  <p class="text-muted small mt-3"><i class="bi bi-info-circle"></i> Les comptes utilisateurs, rôles, zones et régions ne sont pas touchés. Après réinitialisation, réimportez vos parcelles (l'import est additif et remplit localisation + historique).</p>
+</div></div>
+{% endblock %}

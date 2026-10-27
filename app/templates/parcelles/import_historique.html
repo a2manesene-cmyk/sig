@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Import historique cultural — ANCAR SIG{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center"><div class="col-lg-7">
+  <h3 class="ancar-title mb-3">Importer l'historique cultural</h3>
+  <div class="card border-0 shadow-sm"><div class="card-body">
+  <form method="POST" enctype="multipart/form-data">
+    <div class="mb-3">
+      <label class="form-label">Fichier GeoJSON (le même que pour les parcelles)</label>
+      <input type="file" name="fichier" accept=".geojson,.json,application/geo+json" class="form-control" required>
+    </div>
+    <button class="btn ancar-btn"><i class="bi bi-clock-history"></i> Importer</button>
+    <a href="{{ url_for('parcelles.liste') }}" class="btn btn-outline-secondary">Annuler</a>
+  </form>
+  <div class="text-muted small mt-3">
+    <i class="bi bi-info-circle"></i> Chaque propriété du type
+    « Derniere culture hivernale <b>AAAA</b> » est rattachée à la campagne
+    <b>Hivernage AAAA</b> (créée automatiquement si besoin) et enregistrée comme
+    la culture de la parcelle pour cette campagne. Ré-exécutable (mise à jour, pas de doublon).
+  </div>
+  </div></div>
+</div></div>
+{% endblock %}
