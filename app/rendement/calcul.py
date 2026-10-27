@@ -37,6 +37,18 @@ def indice_potentiel(ndvi_max):
     return round(max(0.0, min(1.0, x)) * 100)
 
 
+POTENTIEL_DEFAUT = 4500   # potentiel variété (kg/ha) par défaut si non renseigné
+
+
+def rendement_estime(ndvi_max, potentiel):
+    """Rendement estimé = (indice de potentialité / 100) × rendement potentiel."""
+    ip = indice_potentiel(ndvi_max)
+    if ip is None:
+        return None
+    pot = potentiel if potentiel else POTENTIEL_DEFAUT
+    return round(pot * ip / 100.0)
+
+
 def _fit(xs, ys):
     n = len(xs)
     if n < 2:
@@ -84,3 +96,61 @@ def estimation(culture, ndvi_max, mdl):
         return None
     val = m["a"] * ndvi_max + m["b"]
     return round(max(0.0, val))
+
+
+def rendement_attendu_par_parcelle(pids=None):
+    """Rendement attendu (kg/ha) par parcelle :
+    - si NDVI disponible : estimé = (indice/100) × potentiel de la parcelle ;
+    - sinon : rendement potentiel de la parcelle, ou référence la plus récente.
+    Retourne {pid: rdt}."""
+    # Potentiel + référence par parcelle
+    pot = {}
+    qp = db.session.query(Parcelle.id, Parcelle.rendement_potentiel)
+    if pids is not None:
+        qp = qp.filter(Parcelle.id.in_(pids))
+    for pid, rp in qp.all():
+        pot[pid] = rp
+    ref = {}
+    qr = RendementReference.query
+    if pids is not None:
+        qr = qr.filter(RendementReference.parcelle_id.in_(pids))
+    for r in qr.order_by(RendementReference.annee.asc()).all():
+        if r.rendement_kg_ha is not None:
+            ref[r.parcelle_id] = r.rendement_kg_ha
+
+    nvm = ndvi_max_par_parcelle(pids)
+    out = {}
+    pids_all = set(pot) | set(ref) | set(nvm)
+    for pid in pids_all:
+        m = nvm.get(pid)
+        if m and m.get("ndvi_max") is not None:
+            out[pid] = rendement_estime(m["ndvi_max"], pot.get(pid) or ref.get(pid))
+        elif pot.get(pid):
+            out[pid] = round(pot[pid])
+        elif pid in ref:
+            out[pid] = round(ref[pid])
+    return out
+
+
+import unicodedata as _ud
+
+_PETITS = {"DU", "DE", "DES", "LA", "LE", "LES", "ET", "D", "L", "A", "AU", "AUX"}
+
+
+def cle_lieu(s):
+    """Clé de regroupement d'un lieu : majuscules, sans accents, espaces normalisés."""
+    if not s:
+        return None
+    s2 = _ud.normalize("NFKD", str(s)).encode("ascii", "ignore").decode()
+    return " ".join(s2.upper().replace("-", " ").split())
+
+
+def belle_casse(cle):
+    """Affichage propre d'une clé de lieu : 'NIORO DU RIP' -> 'Nioro du Rip'."""
+    if not cle:
+        return cle
+    mots = str(cle).split()
+    out = []
+    for i, m in enumerate(mots):
+        out.append(m.lower() if (i > 0 and m in _PETITS) else m.capitalize())
+    return " ".join(out)

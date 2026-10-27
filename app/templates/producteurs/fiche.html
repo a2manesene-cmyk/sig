@@ -68,11 +68,100 @@
     </div></div>
   </div>
 </div>
+
+<div class="card border-0 shadow-sm mt-3"><div class="card-body">
+  <h6 class="mb-3"><i class="bi bi-graph-up-arrow text-success"></i> Rendements par campagne (kg/ha)</h6>
+
+  {% if parcelles and campagnes %}
+  <form method="post" action="{{ url_for('producteurs.enregistrer_rendement', pid=prod.id) }}" class="row g-2 align-items-end mb-3">
+    <div class="col-md-4">
+      <label class="form-label small mb-0">Parcelle</label>
+      <select name="parcelle_id" class="form-select form-select-sm" required>
+        {% for p in parcelles %}<option value="{{ p.id }}">{{ p.code or ('Parcelle #' ~ p.id) }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label small mb-0">Campagne</label>
+      <select name="campagne_id" class="form-select form-select-sm" required>
+        {% for c in campagnes %}<option value="{{ c.id }}" {{ 'selected' if c.active }}>{{ c.libelle }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label small mb-0">Rendement (kg/ha)</label>
+      <input type="number" name="rendement" min="0" step="1" class="form-control form-control-sm" required>
+    </div>
+    <div class="col-md-2">
+      <button class="btn btn-success btn-sm w-100"><i class="bi bi-save"></i> Enregistrer</button>
+    </div>
+  </form>
+
+  <div class="row g-3">
+    <div class="col-lg-7">
+      <div class="table-responsive">
+        <table class="table table-sm table-bordered align-middle mb-0">
+          <thead class="table-light">
+            <tr><th>Parcelle</th>{% for c in campagnes %}<th class="text-center">{{ c.annee }}</th>{% endfor %}</tr>
+          </thead>
+          <tbody>
+            {% for p in parcelles %}
+            <tr>
+              <td class="fw-semibold">{{ p.code or ('#' ~ p.id) }}</td>
+              {% for c in campagnes %}
+                {% set v = rendements.get((p.id, c.annee)) %}
+                <td class="text-center">{{ v|round|int if v is not none else '—' }}</td>
+              {% endfor %}
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="form-text">Ces valeurs alimentent aussi la calibration de l'estimation du rendement.</div>
+    </div>
+    <div class="col-lg-5">
+      {% if evolution %}
+        <canvas id="chartRdt" height="180"></canvas>
+      {% else %}
+        <p class="text-muted small">Aucun rendement saisi pour l'instant. Utilisez le formulaire ci-dessus.</p>
+      {% endif %}
+    </div>
+  </div>
+  {% else %}
+    <p class="text-muted small mb-0">Ce producteur n'a pas encore de parcelle, ou aucune campagne n'est définie.</p>
+  {% endif %}
+</div></div>
+
+{% if banca %}
+<div class="card border-0 shadow-sm mt-3"><div class="card-body">
+  <div class="d-flex align-items-center justify-content-between mb-2">
+    <h6 class="mb-0"><i class="bi bi-bank text-success"></i> Indice de bancabilité <span class="badge bg-secondary">interne</span></h6>
+    {% if banca.total is not none %}
+      <div><span class="fs-3 fw-bold">{{ banca.total }}</span><span class="text-muted">/100</span>
+        <span class="badge bg-{{ banca.couleur }} ms-2">{{ banca.classe }}</span></div>
+    {% else %}
+      <span class="badge bg-secondary">{{ banca.classe }}</span>
+    {% endif %}
+  </div>
+  {% if banca.total is not none %}
+    <div class="row">
+      {% for c in banca.composantes %}
+      <div class="col-md-6 mb-2">
+        <div class="d-flex justify-content-between small"><span>{{ c.libelle }}</span><span class="text-muted">{{ c.valeur }}/{{ c.max }}</span></div>
+        <div class="progress" style="height:6px"><div class="progress-bar bg-success" style="width: {{ (c.valeur / c.max * 100)|round }}%"></div></div>
+      </div>
+      {% endfor %}
+    </div>
+    <div class="form-text mt-1">Aide à la décision interne. Un score faible peut refléter un aléa climatique — ce n'est pas un verdict. Aucune donnée n'est transmise à l'extérieur.</div>
+  {% else %}
+    <p class="text-muted small mb-0">{{ banca.message }}</p>
+  {% endif %}
+</div></div>
+{% endif %}
 {% endblock %}
 
 {% block scripts %}
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 <script>
 const map = L.map('map').setView([14.5, -15.5], 8);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -98,5 +187,23 @@ fetch("{{ url_for('producteurs.fiche_geojson', pid=prod.id) }}")
     document.getElementById('msg').textContent = data.features.length + " parcelle(s) sur la carte.";
   })
   .catch(() => { document.getElementById('msg').textContent = "Erreur de chargement."; });
+{% if evolution %}
+const _ev = {{ evolution|tojson }};
+if (window.Chart) {
+  new Chart(document.getElementById('chartRdt'), {
+    type: 'line',
+    data: {
+      labels: _ev.map(x => x.annee),
+      datasets: [{
+        label: 'Rendement moyen (kg/ha)',
+        data: _ev.map(x => x.moyenne),
+        borderColor: '#1E5631', backgroundColor: '#1E5631', tension: 0.3, pointRadius: 4
+      }]
+    },
+    options: { plugins: { legend: { display: false } },
+      scales: { y: { beginAtZero: true, title: { display: true, text: 'kg/ha' } } } }
+  });
+}
+{% endif %}
 </script>
 {% endblock %}

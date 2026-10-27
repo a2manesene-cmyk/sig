@@ -1,5 +1,4 @@
 # Secrets / configuration locale (NE JAMAIS COMMITER)
-config.py
 .env
 app/notifications/settings.py
 
@@ -35,6 +34,7 @@ server.log
 *.bak
 *.dump
 *.sql
+!ancar_db.backup
 
 # OS / éditeurs
 .DS_Store

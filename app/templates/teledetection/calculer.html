@@ -9,12 +9,12 @@
     <div class="row g-3">
       <div class="col-md-6">
         <label class="form-label">Début de la période observée</label>
-        <input type="date" name="date_debut" class="form-control" max="{{ aujourdhui }}" required>
+        <input type="date" name="date_debut" class="form-control" value="2026-05-15" max="{{ aujourdhui }}" required>
       </div>
       <div class="col-md-6">
         <label class="form-label">Fin de la période observée</label>
-        <input type="date" name="date_fin" id="dateFin" class="form-control" max="{{ aujourdhui }}" required>
-        <div class="form-text">Le calcul sera <b>enregistré sous cette date</b> : <span id="recapDate" class="fw-semibold">—</span></div>
+        <input type="date" name="date_fin" id="dateFin" class="form-control" value="{{ aujourdhui }}" max="{{ aujourdhui }}" required>
+        <div class="form-text">En mode « instantané », le calcul est <b>enregistré sous cette date</b> : <span id="recapDate" class="fw-semibold">—</span></div>
       </div>
       <div class="col-md-8">
         <label class="form-label">Périmètre</label>
@@ -22,6 +22,15 @@
           <option value="">Toutes les parcelles</option>
           {% for r in regions %}<option value="{{ r.id }}">{{ r.nom }}</option>{% endfor %}
         </select>
+      </div>
+      <div class="col-12">
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" name="serie" id="serie" checked>
+          <label class="form-check-label" for="serie">
+            <b>Évolution à chaque passage du satellite</b> (série temporelle) — un point par acquisition Sentinel-2 sur la période, pour suivre la courbe depuis le début.
+          </label>
+        </div>
+        <div class="form-text">Décochez pour un simple <b>instantané</b> (une seule valeur médiane à la date de fin).</div>
       </div>
     </div>
     <div class="mt-3">

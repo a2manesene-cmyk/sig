@@ -23,29 +23,33 @@ const _sat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/W
 }).addTo(map);
 L.control.layers({ "Satellite (RGB)": _sat, "Plan (OSM)": _osm }, null, { position: 'topright' }).addTo(map);
 
-// Code couleur unifié : rouge = mauvais, orange = moyen, vert = bon (échelle maïs)
-const C_ROUGE = '#d73027', C_ORANGE = '#F39C12', C_VERT = '#1a9850', C_GRIS = '#bdbdbd';
-function couleurEtat(ndvi) {
+// Code couleur santÃ© (Ã©chelle QGIS 5 classes)
+const C_ROUGE='#d73027', C_ORANGE='#F39C12', C_JAUNE='#F4D03F', C_VERTC='#a6d96a', C_VERT='#1a9850', C_GRIS='#bdbdbd';
+function couleurEtat(ndvi){
   if (ndvi == null) return C_GRIS;
-  if (ndvi < 0.08) return C_ROUGE;
-  if (ndvi < 0.25) return C_ORANGE;
+  if (ndvi < 0.10) return C_ROUGE;
+  if (ndvi < 0.20) return C_ORANGE;
+  if (ndvi < 0.35) return C_JAUNE;
+  if (ndvi < 0.55) return C_VERTC;
   return C_VERT;
 }
-function etatTexte(ndvi) {
+function etatTexte(ndvi){
   if (ndvi == null) return 'Non calculé';
-  if (ndvi < 0.08) return 'Très faible';
-  if (ndvi < 0.25) return 'Modérée';
-  return 'Dense';
+  if (ndvi < 0.10) return 'Sol nu / Échec';
+  if (ndvi < 0.20) return 'Végétation critique';
+  if (ndvi < 0.35) return 'Retard / À surveiller';
+  if (ndvi < 0.55) return 'Bon comportement';
+  return 'Excellent développement';
 }
 const legendeSig = L.control({ position: 'bottomright' });
 legendeSig.onAdd = function () {
   const d = L.DomUtil.create('div', 'card p-2 shadow-sm');
   d.style.background = '#fff';
-  d.innerHTML = '<div class="small fw-semibold mb-1">État de la parcelle (NDVI)</div>' +
-    `<div class="small"><span style="display:inline-block;width:14px;height:14px;background:${C_ROUGE};margin-right:4px;border:1px solid #999"></span>Très faible (&lt; 0,08)</div>` +
-    `<div class="small"><span style="display:inline-block;width:14px;height:14px;background:${C_ORANGE};margin-right:4px;border:1px solid #999"></span>Modérée (0,08–0,25)</div>` +
-    `<div class="small"><span style="display:inline-block;width:14px;height:14px;background:${C_VERT};margin-right:4px;border:1px solid #999"></span>Dense (&ge; 0,25)</div>` +
-    `<div class="small"><span style="display:inline-block;width:14px;height:14px;background:${C_GRIS};margin-right:4px;border:1px solid #999"></span>Non calculé</div>`;
+  function li(c,t){ return `<div class="small"><span style="display:inline-block;width:14px;height:14px;background:${c};margin-right:4px;border:1px solid #999"></span>${t}</div>`; }
+  d.innerHTML = '<div class="small fw-semibold mb-1">Santé des cultures (NDVI)</div>' +
+    li(C_ROUGE,'Sol nu / Échec') + li(C_ORANGE,'Végétation critique') +
+    li(C_JAUNE,'Retard / À surveiller') + li(C_VERTC,'Bon comportement') +
+    li(C_VERT,'Excellent développement') + li(C_GRIS,'Non calculé');
   return d;
 };
 legendeSig.addTo(map);

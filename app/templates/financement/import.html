@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Importer financement — ANCAR SIG{% endblock %}
+{% block content %}
+<h4 class="mb-3"><i class="bi bi-upload text-success"></i> Importer le financement (Excel)</h4>
+<div class="card border-0 shadow-sm" style="max-width:640px"><div class="card-body">
+  <form method="POST" enctype="multipart/form-data">
+    <div class="mb-3">
+      <label class="form-label">Fichier Excel (.xlsx) — situation financement</label>
+      <input type="file" name="fichier" accept=".xlsx" class="form-control" required>
+      <div class="form-text">En-têtes attendus en 2e ligne : Région, Raison Sociale, Nbre producteur, Montant sollicité, Montant accordé, État…</div>
+    </div>
+    <div class="row g-2">
+      <div class="col-md-6">
+        <label class="form-label">Programme</label>
+        <input type="text" name="programme" value="Grenier du maïs" class="form-control">
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Année (campagne)</label>
+        <input type="number" name="annee" value="2026" class="form-control">
+      </div>
+    </div>
+    <div class="form-check my-3">
+      <input class="form-check-input" type="checkbox" name="apercu" id="apercu" checked>
+      <label class="form-check-label" for="apercu"><b>Aperçu</b> — simule sans rien écrire. Décochez pour importer.</label>
+    </div>
+    <button class="btn ancar-btn"><i class="bi bi-play-circle"></i> Lancer</button>
+  </form>
+</div></div>
+{% endblock %}

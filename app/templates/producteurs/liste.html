@@ -30,49 +30,52 @@
         {% for r in regions %}<option value="{{ r.id }}" {{ 'selected' if region_id == r.id }}>{{ r.nom }}</option>{% endfor %}
       </select>
     </div>
-    <div class="col-md-2">
+    <div class="col-md-3">
       <label class="form-label small mb-1">Organisation</label>
       <select name="organisation" class="form-select">
         <option value="">Toutes</option>
         {% for o in organisations %}<option value="{{ o.id }}" {{ 'selected' if op_id == o.id }}>{{ o.nom }}</option>{% endfor %}
       </select>
     </div>
-    <div class="col-md-2 d-grid gap-1">
-      <button class="btn ancar-btn btn-sm"><i class="bi bi-search"></i> Rechercher</button>
-      <a href="{{ url_for('producteurs.liste') }}" class="btn btn-outline-secondary btn-sm">Réinitialiser</a>
+    <div class="col-md-1 d-grid">
+      <button class="btn ancar-btn btn-sm"><i class="bi bi-search"></i></button>
     </div>
   </div>
+  {% if q or region_id or op_id %}
+  <div class="mt-2"><a href="{{ url_for('producteurs.liste') }}" class="small">Réinitialiser les filtres</a></div>
+  {% endif %}
 </div></form>
 
-<div class="card border-0 shadow-sm"><div class="card-body p-0">
-<div class="table-responsive">
-<table class="table table-hover mb-0 align-middle">
-  <thead class="table-light">
-    <tr><th>Nom</th><th>Téléphone</th><th>Sexe</th><th>Organisation</th><th>Région</th>
-        <th class="text-end">Parcelles</th><th class="text-end">Superficie (ha)</th></tr>
-  </thead>
-  <tbody>
-  {% for pr in producteurs %}
-    {% set stat = agg.get(pr.id, (0, 0)) %}
-    <tr>
-      <td class="fw-semibold"><a href="{{ url_for('producteurs.fiche', pid=pr.id) }}" class="text-decoration-none">{{ pr.nom_complet }}</a></td>
-      <td>{{ pr.telephone or '—' }}</td>
-      <td>{{ pr.sexe or '—' }}</td>
-      <td>{{ pr.organisation.nom if pr.organisation else '—' }}</td>
-      <td>{{ pr.region.nom if pr.region else '—' }}</td>
-      <td class="text-end"><span class="badge bg-success">{{ stat[0] }}</span></td>
-      <td class="text-end">{{ '%.2f'|format(stat[1]) }}</td>
-    </tr>
-  {% else %}
-    <tr><td colspan="7" class="text-center text-muted py-4">Aucun producteur ne correspond aux critères.</td></tr>
-  {% endfor %}
-  </tbody>
-</table>
+<div class="row g-3">
+{% for pr in producteurs %}
+  {% set stat = agg.get(pr.id, (0, 0)) %}
+  <div class="col-sm-6 col-lg-4 col-xl-3">
+    <div class="card h-100 border-0 shadow-sm parcelle-card">
+      <div class="card-body pb-2">
+        <div class="d-flex justify-content-between align-items-start">
+          <a href="{{ url_for('producteurs.fiche', pid=pr.id) }}" class="fw-semibold text-decoration-none">{{ pr.nom_complet }}</a>
+          {% if alertes.get(pr.id) %}<span class="badge bg-danger" title="Parcelles en stress hydrique"><i class="bi bi-droplet-fill"></i> {{ alertes[pr.id] }}</span>{% endif %}
+        </div>
+        <div class="small text-muted mb-2">{{ pr.telephone or '—' }}{% if pr.sexe %} · {{ pr.sexe }}{% endif %}</div>
+        <div class="small"><i class="bi bi-building text-muted"></i> {{ pr.organisation.nom if pr.organisation else '—' }}</div>
+        <div class="small text-muted"><i class="bi bi-geo-alt"></i> {{ pr.region.nom if pr.region else '—' }}</div>
+        <div class="mt-2 d-flex gap-3 align-items-center">
+          <span class="small"><span class="badge bg-success">{{ stat[0] }}</span> parcelles</span>
+          <span class="small text-muted"><i class="bi bi-rulers"></i> {{ '%.1f'|format(stat[1]) }} ha</span>
+        </div>
+      </div>
+      <div class="card-footer bg-white border-0 pt-0">
+        <a href="{{ url_for('producteurs.fiche', pid=pr.id) }}" class="btn btn-sm btn-outline-success w-100">Voir la fiche</a>
+      </div>
+    </div>
+  </div>
+{% else %}
+  <div class="col-12"><div class="text-center text-muted py-5">Aucun producteur ne correspond aux critères.</div></div>
+{% endfor %}
 </div>
-</div></div>
 
 {% if pagination.pages > 1 %}
-<nav class="mt-3"><ul class="pagination pagination-sm justify-content-center">
+<nav class="mt-4"><ul class="pagination pagination-sm justify-content-center">
   <li class="page-item {{ 'disabled' if not pagination.has_prev }}">
     <a class="page-link" href="{{ qs(pagination.prev_num) if pagination.has_prev else '#' }}">Précédent</a>
   </li>

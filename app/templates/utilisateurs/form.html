@@ -63,7 +63,7 @@
         </select>
         <div class="form-text">Ctrl/Cmd pour en sélectionner plusieurs.</div>
       </div>
-      <div class="col-md-6 perim perim-com" data-roles="CAR">
+      <div class="col-md-6 perim perim-com" data-roles="CAR,ANIMATEUR">
         <label class="form-label">Communes autorisées</label>
         <select name="communes" class="form-select" multiple size="6">
           {% for c in communes %}<option value="{{ c }}" {{ 'selected' if u and c in u.communes }}>{{ c }}</option>{% endfor %}

@@ -19,7 +19,37 @@
       </select>
       <div class="form-text">Les géométries sont reprojetées en WGS 84 (EPSG:4326) pour le stockage PostGIS.</div>
     </div>
-    <button class="btn ancar-btn"><i class="bi bi-upload"></i> Importer</button>
+    <div class="mb-3">
+      <label class="form-label">Programme / projet</label>
+      <input type="text" name="programme" list="liste_programmes" class="form-control"
+             placeholder="Ex. FSRP, Grenier du maïs…" autocomplete="off">
+      <datalist id="liste_programmes">
+        {% for pr in programmes %}<option value="{{ pr.nom }}">{% endfor %}
+      </datalist>
+      <div class="form-text">Choisissez un programme existant ou saisissez un nouveau nom : il sera créé automatiquement et rattaché aux parcelles importées.</div>
+    </div>
+    <div class="mb-3">
+      <label class="form-label">Mode d'import</label>
+      <select name="mode" id="modeImport" class="form-select">
+        <option value="additif" selected>Additif — n'ajoute que les nouvelles parcelles</option>
+        <option value="maj">Mise à jour — met à jour les parcelles existantes (attributs + redessins)</option>
+      </select>
+    </div>
+    <div class="mb-3" id="blocSeuil" style="display:none">
+      <label class="form-label">Seuil de recouvrement pour détecter une parcelle redessinée (%)</label>
+      <input type="number" name="seuil_overlap" class="form-control" value="60" min="10" max="100">
+      <div class="form-text">En mode mise à jour, une parcelle du fichier qui recouvre une parcelle existante au-delà de ce seuil est considérée comme la même (redessinée).</div>
+    </div>
+    <div class="form-check mb-3">
+      <input class="form-check-input" type="checkbox" name="apercu" id="apercu" checked>
+      <label class="form-check-label" for="apercu"><b>Aperçu (simulation)</b> — affiche ce qui serait fait, sans rien écrire. Décochez pour appliquer réellement.</label>
+    </div>
+    <button class="btn ancar-btn"><i class="bi bi-upload"></i> Lancer</button>
+    <script>
+      document.getElementById('modeImport').addEventListener('change', function(){
+        document.getElementById('blocSeuil').style.display = (this.value==='maj') ? '' : 'none';
+      });
+    </script>
     <a href="{{ url_for('parcelles.liste') }}" class="btn btn-outline-secondary">Annuler</a>
   </form>
   <p class="text-muted small mt-3">

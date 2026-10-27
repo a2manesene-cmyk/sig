@@ -13,7 +13,8 @@ from app.models.rendement import RendementReference
 from app.auth.decorators import niveau_minimum
 from app.scoping import parcelle_ids, peut_voir_parcelle
 from .calcul import (
-    ndvi_max_par_parcelle, indice_potentiel, estimation, modeles, MIN_POINTS
+    ndvi_max_par_parcelle, indice_potentiel, estimation, modeles, MIN_POINTS,
+    rendement_attendu_par_parcelle, rendement_estime,
 )
 from . import ia as IA
 
@@ -51,6 +52,17 @@ def liste():
     q = q.order_by(Parcelle.code)
     pagination = q.paginate(page=page, per_page=25, error_out=False)
 
+    # Source de la référence de rendement, par parcelle
+    from app.models.rendement import RendementReference
+    pids_page = [p.id for p in pagination.items]
+    sources = {}
+    if pids_page:
+        for pid, src in (db.session.query(RendementReference.parcelle_id,
+                                          func.max(RendementReference.source))
+                         .filter(RendementReference.parcelle_id.in_(pids_page))
+                         .group_by(RendementReference.parcelle_id).all()):
+            sources[pid] = src
+
     vues = []
     for p in pagination.items:
         m = nvm.get(p.id, {})
@@ -58,8 +70,13 @@ def liste():
         vues.append({
             "p": p, "ndvi_max": vmax, "n": m.get("n"),
             "indice": indice_potentiel(vmax),
-            "estimation": estimation(p.culture, vmax, mdl),
+            "estimation": rendement_estime(vmax, p.rendement_potentiel),
+            "source": sources.get(p.id),
         })
+
+    # Y a-t-il des références DAPSA (pour le bandeau « valeurs indicatives ») ?
+    dapsa_present = db.session.query(RendementReference.id).filter(
+        RendementReference.source.isnot(None)).first() is not None
 
     cultures = [c[0] for c in (
         db.session.query(Parcelle.culture).filter(Parcelle.id.in_(ids))
@@ -68,7 +85,7 @@ def liste():
     return render_template(
         "rendement/liste.html",
         vues=vues, pagination=pagination, culture=culture, cultures=cultures,
-        modeles=mdl, min_points=MIN_POINTS, total=len(ids),
+        modeles=mdl, min_points=MIN_POINTS, total=len(ids), dapsa_present=dapsa_present,
     )
 
 
@@ -161,3 +178,64 @@ def references():
             .order_by(RendementReference.date_saisie.desc()).limit(50).all())
     return render_template("rendement/references.html",
                            refs=refs, modeles=modeles(), min_points=MIN_POINTS)
+
+
+@rendement_bp.route("/production")
+@login_required
+def production():
+    """Production attendue (tonnes) et rendement moyen, agrégés par niveau."""
+    from app.models.producteur import Producteur
+    from app.models.organisation import OrganisationProducteur
+    from app.models.zone import Zone
+
+    pids = parcelle_ids(current_user)
+    rdt = rendement_attendu_par_parcelle(pids)   # {pid: kg/ha}
+
+    q = (db.session.query(
+            Parcelle.id, Parcelle.surface_ha, Parcelle.departement, Parcelle.commune,
+            Zone.nom, OrganisationProducteur.nom)
+         .select_from(Parcelle)
+         .outerjoin(Zone, Zone.id == Parcelle.zone_id)
+         .outerjoin(Producteur, Producteur.id == Parcelle.producteur_id)
+         .outerjoin(OrganisationProducteur, OrganisationProducteur.id == Producteur.organisation_id))
+    if pids is not None:
+        q = q.filter(Parcelle.id.in_(pids))
+
+    # agrégats : cle -> [production_kg, superficie_ha, nb]
+    agg = {"zone": {}, "departement": {}, "commune": {}, "op": {}}
+    tot_kg = tot_ha = tot_n = 0
+    from .calcul import cle_lieu, belle_casse
+    for pid, surf, dep, com, zone, op in q.all():
+        r = rdt.get(pid)
+        if r is None or not surf:
+            continue
+        prod_kg = r * surf
+        tot_kg += prod_kg; tot_ha += surf; tot_n += 1
+        dep_c = belle_casse(cle_lieu(dep)) if dep else "— (non renseigné)"
+        com_c = belle_casse(cle_lieu(com)) if com else "— (non renseignée)"
+        for niveau, cle in (("zone", zone or "— (non renseignée)"),
+                            ("departement", dep_c),
+                            ("commune", com_c),
+                            ("op", op or "— (hors OP)")):
+            d = agg[niveau].setdefault(cle, [0.0, 0.0, 0])
+            d[0] += prod_kg; d[1] += surf; d[2] += 1
+
+    def table(d):
+        rows = []
+        for cle, (pkg, ha, n) in d.items():
+            rows.append({"cle": cle, "production_t": round(pkg / 1000.0, 1),
+                         "superficie": round(ha, 1), "nb": n,
+                         "rendement": round(pkg / ha) if ha else 0})
+        return sorted(rows, key=lambda x: -x["production_t"])
+
+    total = {"production_t": round(tot_kg / 1000.0, 1), "superficie": round(tot_ha, 1),
+             "nb": tot_n, "rendement": round(tot_kg / tot_ha) if tot_ha else 0}
+
+    return render_template(
+        "rendement/production.html",
+        total=total,
+        par_zone=table(agg["zone"]),
+        par_departement=table(agg["departement"]),
+        par_commune=table(agg["commune"]),
+        par_op=table(agg["op"]),
+    )

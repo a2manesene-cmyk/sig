@@ -48,9 +48,7 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 const map = L.map('map').setView([14.2, -15.6], 8);
-const _osmC = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OSM' });
-const _satC = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, attribution: 'Imagerie © Esri, Maxar' }).addTo(map);
-L.control.layers({ "Satellite (RGB)": _satC, "Plan (OSM)": _osmC }, null, { position: 'topright' }).addTo(map);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OSM' }).addTo(map);
 
 // Couche raster de différence (Earth Engine)
 L.tileLayer("{{ tile_url|safe }}", { opacity: 0.85, maxZoom: 19, attribution: 'Sentinel-2 / Earth Engine' }).addTo(map);

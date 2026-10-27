@@ -1,0 +1,31 @@
+services:
+  db:
+    image: postgis/postgis:18-3.6
+    restart: always
+    environment:
+      POSTGRES_USER: ${DB_USER:-ancar}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-ancar}
+      POSTGRES_DB: ${DB_NAME:-ancar_db}
+    volumes:
+      - postgres_data:/var/lib/postgresql
+      - ./docker-initdb.sh:/docker-entrypoint-initdb.d/init-database.sh:ro
+      - ./ancar_db.backup:/docker-entrypoint-initdb.d/init_backup/ancar_db.backup:ro
+
+  web:
+    build: .
+    restart: always
+    depends_on:
+      - db
+    environment:
+      - SECRET_KEY=${SECRET_KEY:-ancar-cle-secrete-a-changer-en-production}
+      - DB_USER=${DB_USER:-ancar}
+      - DB_PASSWORD=${DB_PASSWORD:-ancar}
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_NAME=${DB_NAME:-ancar_db}
+      - GEE_PROJECT=${GEE_PROJECT:-ancarsi-f07fd}
+    ports:
+      - "5000:5000"
+
+volumes:
+  postgres_data:

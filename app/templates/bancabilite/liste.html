@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Bancabilité — ANCAR SIG{% endblock %}
+{% block content %}
+{% if ctx and ctx.indicatif %}
+<div class="alert alert-warning py-2 small"><i class="bi bi-info-circle"></i> <b>Score indicatif.</b> Les scores se ressemblent car ils reposent sur une seule campagne{% if ctx.dapsa %} et sur le <b>potentiel de la variété</b> (Mastrop, 4–5 t/ha){% endif %}. Ils se différencieront avec des <b>rendements réels sur plusieurs campagnes</b> et le <b>NDVI calculé</b>.</div>
+{% endif %}
+<div class="mb-3"><a href="{{ url_for('bancabilite.par_op') }}" class="btn btn-success btn-sm"><i class="bi bi-diagram-3"></i> Voir la bancabilité par OP</a></div>
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="mb-0"><i class="bi bi-bank text-success"></i> Indice de bancabilité <span class="badge bg-secondary">interne</span></h4>
+</div>
+
+<div class="alert alert-light border small">
+  <i class="bi bi-info-circle text-success"></i>
+  Aide à la décision <b>à usage interne</b> : oriente l'accompagnement des producteurs vers le crédit.
+  Un score faible peut refléter un <b>aléa climatique</b> et non une mauvaise gestion — ce n'est pas un verdict,
+  et aucune donnée n'est transmise à l'extérieur.
+</div>
+
+<div class="card border-0 shadow-sm"><div class="card-body p-0">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Producteur</th><th class="text-center">Score</th><th>Niveau</th>
+          <th class="text-end">Rdt moyen</th><th class="text-center">Campagnes</th>
+          <th class="text-center">Parcelles</th><th class="text-center">OP</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for l in lignes %}
+        {% set s = l.s %}
+        <tr>
+          <td><a href="{{ url_for('producteurs.fiche', pid=l.prod.id) }}" class="text-decoration-none">{{ l.prod.nom_complet }}</a></td>
+          <td class="text-center">
+            {% if s.total is not none %}
+              <span class="fw-bold fs-5">{{ s.total }}</span><span class="text-muted small">/100</span>
+            {% else %}<span class="text-muted">—</span>{% endif %}
+          </td>
+          <td><span class="badge bg-{{ s.couleur }}">{{ s.classe }}</span></td>
+          <td class="text-end">{{ (s.rdt_moyen ~ ' kg/ha') if s.rdt_moyen else '—' }}</td>
+          <td class="text-center">{{ s.n_campagnes }}</td>
+          <td class="text-center">{{ s.n_parcelles }}</td>
+          <td class="text-center">{% if s.a_op %}<i class="bi bi-check-circle text-success"></i>{% else %}<span class="text-muted">—</span>{% endif %}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7" class="text-center text-muted py-3">Aucun producteur dans votre périmètre.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div></div>
+
+<p class="text-muted small mt-2">
+  Le score combine : niveau de rendement (30), régularité (25), antériorité (15),
+  stabilité des parcelles (10), santé des cultures (10), structuration OP (10).
+</p>
+{% endblock %}

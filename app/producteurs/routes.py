@@ -18,6 +18,7 @@ from app.models.filiere import Filiere
 from app.models.campagne import Campagne
 from app.models.parcelle import Parcelle
 from app.models.indice import IndiceVegetation
+from app.models.rendement import RendementReference
 from app.auth.decorators import niveau_minimum
 from app.scoping import producteur_ids, organisation_ids, peut_voir_producteur
 
@@ -31,10 +32,26 @@ except Exception:
     LANGUES = {"fr": "Français", "wo": "Wolof", "ff": "Pulaar"}
 
 
+def _score_banca(prod):
+    """Score de bancabilité (tolérant : renvoie None si le module est absent)."""
+    try:
+        from app.bancabilite.calcul import score_producteur
+        return score_producteur(prod)
+    except Exception:
+        return None
+
+
 # --- Helpers ----------------------------------------------------------------
 def _i(v):
     try:
         return int(v) if v not in (None, "") else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _f(v):
+    try:
+        return float(str(v).replace(",", ".")) if v not in (None, "") else None
     except (TypeError, ValueError):
         return None
 
@@ -198,11 +215,80 @@ def fiche(pid):
     )
     total_surface = round(sum(p.surface_ha or 0 for p in parcelles), 2)
     animateurs = sorted({p.animateur.strip() for p in parcelles if p.animateur})
+
+    # Rendements par parcelle et par campagne (table rendements_reference)
+    campagnes = Campagne.query.order_by(Campagne.annee).all()
+    pids = [p.id for p in parcelles]
+    rendements = {}   # (parcelle_id, annee) -> kg/ha
+    if pids:
+        for r in RendementReference.query.filter(
+                RendementReference.parcelle_id.in_(pids)).all():
+            if r.annee is not None:
+                rendements[(r.parcelle_id, r.annee)] = r.rendement_kg_ha
+    # Évolution : moyenne du producteur par année
+    par_annee = {}
+    for (pid_, annee), val in rendements.items():
+        par_annee.setdefault(annee, []).append(val)
+    evolution = [
+        {"annee": a, "moyenne": round(sum(v) / len(v))}
+        for a, v in sorted(par_annee.items())
+    ]
+
     return render_template(
         "producteurs/fiche.html",
         prod=prod, parcelles=parcelles, total_surface=total_surface,
         langues=LANGUES, animateurs=animateurs,
+        campagnes=campagnes, rendements=rendements, evolution=evolution,
+        banca=_score_banca(prod),
     )
+
+
+@producteurs_bp.route("/<int:pid>/rendement", methods=["POST"])
+@login_required
+@niveau_minimum(2)
+def enregistrer_rendement(pid):
+    """Saisie/mise à jour d'un rendement (kg/ha) pour une parcelle et une campagne.
+    Alimente la table de référence, donc aussi la calibration du modèle."""
+    prod = db.session.get(Producteur, pid)
+    if not prod:
+        flash("Producteur introuvable.", "warning")
+        return redirect(url_for("producteurs.liste"))
+    if not peut_voir_producteur(current_user, pid):
+        flash("Ce producteur est hors de votre périmètre.", "warning")
+        return redirect(url_for("producteurs.liste"))
+
+    parcelle_id = _i(request.form.get("parcelle_id"))
+    campagne_id = _i(request.form.get("campagne_id"))
+    rendement = _f(request.form.get("rendement"))
+
+    p = db.session.get(Parcelle, parcelle_id) if parcelle_id else None
+    camp = db.session.get(Campagne, campagne_id) if campagne_id else None
+    if not p or p.producteur_id != pid:
+        flash("Parcelle invalide pour ce producteur.", "warning")
+    elif not camp or camp.annee is None:
+        flash("Campagne invalide.", "warning")
+    elif rendement is None or rendement < 0:
+        flash("Rendement invalide (kg/ha).", "warning")
+    else:
+        vmax = (db.session.query(func.max(IndiceVegetation.ndvi))
+                .filter(IndiceVegetation.parcelle_id == p.id).scalar())
+        ref = (RendementReference.query
+               .filter_by(parcelle_id=p.id, annee=camp.annee).first())
+        if ref:                       # mise à jour (upsert)
+            ref.rendement_kg_ha = rendement
+            ref.culture = p.culture
+            ref.ndvi_max = vmax
+        else:
+            db.session.add(RendementReference(
+                parcelle_id=p.id, annee=camp.annee, culture=p.culture,
+                rendement_kg_ha=rendement, ndvi_max=vmax))
+        db.session.commit()
+        note = "" if vmax is not None else (
+            " (NDVI pas encore calculé : ce point ne servira au modèle "
+            "qu'après un calcul d'indices)")
+        flash(f"Rendement enregistré : {p.code} — {camp.libelle} — "
+              f"{rendement:.0f} kg/ha{note}.", "success")
+    return redirect(url_for("producteurs.fiche", pid=pid))
 
 
 @producteurs_bp.route("/<int:pid>/langue", methods=["POST"])

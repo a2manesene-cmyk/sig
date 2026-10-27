@@ -4,9 +4,11 @@ Flask-Login==0.6.3
 Flask-Migrate==4.0.7
 SQLAlchemy==2.0.34
 GeoAlchemy2==0.15.2
-psycopg2-binary==2.9.9
-Shapely==2.0.6
-pyproj==3.7.2
-openpyxl==3.1.5
-earthengine-api==1.1.5
+psycopg2-binary>=2.9.9
+Shapely>=2.0.6
+pyproj>=3.7.2
+openpyxl>=3.1.5
+earthengine-api>=1.1.5
 Werkzeug==3.0.4
+
+

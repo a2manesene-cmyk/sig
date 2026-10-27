@@ -45,25 +45,26 @@ def interpret(indice, v):
         return _r("—", "secondary", "Donnée indisponible")
 
     if indice in ("ndvi", "savi", "evi"):
-        if v < 0.08:
-            return _r("Très faible", "danger",
-                      "Sol nu, maïs non levé, très jeune ou fortement dégradé")
-        if v < 0.25:
-            return _r("Modérée", "warning",
-                      "Couverture limitée ou présence importante de sol nu")
-        return _r("Dense", "success",
-                  "Couvert végétal bien développé")
+        if v < 0.10:
+            return _r("Sol nu / Échec", "danger", "Sol nu ou culture non levée / échec")
+        if v < 0.20:
+            return _r("Végétation critique", "danger", "Végétation très clairsemée, situation critique")
+        if v < 0.35:
+            return _r("Retard / À surveiller", "warning", "Développement en retard, à surveiller")
+        if v < 0.55:
+            return _r("Bon comportement", "success", "Culture en bon développement")
+        return _r("Excellent développement", "success", "Couvert dense, excellent développement")
 
     if indice == "ndmi":
-        if v >= 0.40:
-            return _r("Très bon", "success", "Végétation très humide / bon état hydrique")
-        if v >= 0.25:
-            return _r("Bon", "success", "Bon niveau d'humidité")
-        if v >= 0.10:
-            return _r("Modéré", "warning", "Début de déficit hydrique possible")
-        if v >= 0.0:
-            return _r("Sévère", "warning", "Stress hydrique important")
-        return _r("Très sévère", "danger", "Très faible humidité / stress hydrique très important")
+        if v < 0.00:
+            return _r("Stress hydrique sévère", "danger", "Déficit hydrique très important")
+        if v < 0.10:
+            return _r("Stress hydrique modéré", "warning", "Déficit hydrique modéré")
+        if v < 0.20:
+            return _r("Humidité intermédiaire", "info", "Humidité intermédiaire")
+        if v < 0.35:
+            return _r("Humidité élevée", "success", "Bon état hydrique")
+        return _r("Végétation très humide", "success", "Végétation très humide")
 
     if indice == "ndwi":
         if v < 0.0:

@@ -20,6 +20,8 @@ from app.models.campagne import Campagne
 from app.models.zone import Region
 from app.models.indice import IndiceVegetation
 from app.models.historique import HistoriqueCultural
+from app.models.rendement import RendementReference
+from app.models.suivi import SuiviTerrain
 from app.teledetection.interpretation import interpret
 from app.auth.decorators import niveau_minimum
 from app.scoping import filtrer_parcelles, parcelle_ids, peut_voir_parcelle
@@ -77,6 +79,10 @@ def liste():
     culture = request.args.get("culture") or None
     region_id = _i(request.args.get("region"))
     campagne_id = _i(request.args.get("campagne"))
+    programme_id = _i(request.args.get("programme"))
+    organisation_id = _i(request.args.get("organisation"))
+    etat = request.args.get("etat") or None          # faible | modere | dense
+    hydrique = request.args.get("hydrique") or None   # "1" -> NDMI < 0.10
     page = _i(request.args.get("page")) or 1
 
     query = Parcelle.query
@@ -84,11 +90,40 @@ def liste():
         query = query.filter(Parcelle.code.ilike(f"%{q}%"))
     if culture:
         query = query.filter(Parcelle.culture == culture)
-    if region_id:
-        query = (query.join(Producteur, Producteur.id == Parcelle.producteur_id)
-                      .filter(Producteur.region_id == region_id))
+    if programme_id:
+        query = query.filter(Parcelle.programme_id == programme_id)
+    if region_id or organisation_id:
+        query = query.join(Producteur, Producteur.id == Parcelle.producteur_id)
+        if region_id:
+            query = query.filter(Producteur.region_id == region_id)
+        if organisation_id:
+            query = query.filter(Producteur.organisation_id == organisation_id)
     if campagne_id:
         query = query.filter(Parcelle.campagne_id == campagne_id)
+    # Filtre par état de végétation / stress hydrique (dernier indice)
+    if etat or hydrique:
+        _sub = (db.session.query(
+                    IndiceVegetation.parcelle_id.label("pid"),
+                    func.max(IndiceVegetation.date).label("d"))
+                .group_by(IndiceVegetation.parcelle_id).subquery())
+        query = (query.join(_sub, _sub.c.pid == Parcelle.id)
+                      .join(IndiceVegetation, and_(
+                          IndiceVegetation.parcelle_id == Parcelle.id,
+                          IndiceVegetation.date == _sub.c.d)))
+        if etat == "solnu":
+            query = query.filter(IndiceVegetation.ndvi < 0.10)
+        elif etat == "critique":
+            query = query.filter(IndiceVegetation.ndvi >= 0.10, IndiceVegetation.ndvi < 0.20)
+        elif etat == "retard":
+            query = query.filter(IndiceVegetation.ndvi >= 0.20, IndiceVegetation.ndvi < 0.35)
+        elif etat == "bon":
+            query = query.filter(IndiceVegetation.ndvi >= 0.35, IndiceVegetation.ndvi < 0.55)
+        elif etat == "excellent":
+            query = query.filter(IndiceVegetation.ndvi >= 0.55)
+        elif etat == "faible":   # rétro-compat (ancien lien) : sol nu + critique + retard
+            query = query.filter(IndiceVegetation.ndvi < 0.35)
+        if hydrique == "1":
+            query = query.filter(IndiceVegetation.ndmi < 0.10)
     query = filtrer_parcelles(query, current_user)
     query = query.order_by(Parcelle.id.desc())
 
@@ -146,13 +181,16 @@ def liste():
         .filter(Parcelle.culture.isnot(None))
         .distinct().order_by(Parcelle.culture).all())]
 
+    from app.models.programme import Programme
     return render_template(
         "parcelles/liste.html",
         vues=vues, pagination=pagination,
         q=q, culture=culture, region_id=region_id, campagne_id=campagne_id,
+        programme_id=programme_id,
         cultures=cultures,
         regions=Region.query.order_by(Region.nom).all(),
         campagnes=Campagne.query.order_by(Campagne.annee.desc()).all(),
+        programmes=Programme.query.order_by(Programme.nom).all(),
     )
 
 
@@ -268,6 +306,183 @@ def evolution(pid):
     return jsonify({"geometry": json.loads(gj), "stages": stages})
 
 
+@parcelles_bp.route("/<int:pid>/suivi", methods=["POST"])
+@login_required
+def enregistrer_suivi(pid):
+    """Ajoute une observation de terrain (animateur / CAR, niveau >= 2)."""
+    from datetime import datetime as _dt, date as _date
+    from app.models.suivi import SuiviTerrain
+    p = db.session.get(Parcelle, pid)
+    if not p:
+        flash("Parcelle introuvable.", "warning")
+        return redirect(url_for("parcelles.liste"))
+    if not peut_voir_parcelle(current_user, pid):
+        flash("Cette parcelle est hors de votre périmètre.", "warning")
+        return redirect(url_for("parcelles.liste"))
+    if current_user.niveau < 2:
+        flash("Vous n'avez pas le droit d'ajouter un suivi.", "warning")
+        return redirect(url_for("parcelles.fiche", pid=pid))
+
+    def _i(v):
+        try:
+            return int(v) if v not in (None, "") else None
+        except (TypeError, ValueError):
+            return None
+    try:
+        d = _dt.strptime(request.form.get("date_obs", ""), "%Y-%m-%d").date()
+    except (TypeError, ValueError):
+        d = _date.today()
+
+    obs = SuiviTerrain(
+        parcelle_id=pid,
+        campagne_id=_i(request.form.get("campagne_id")),
+        date_obs=d,
+        phase=(request.form.get("phase") or None),
+        actions=(request.form.get("actions") or None),
+        tendance=(request.form.get("tendance") or None),
+        difficultes=(request.form.get("difficultes") or None),
+        auteur_id=current_user.id,
+    )
+    db.session.add(obs)
+    db.session.commit()
+    flash("Observation de terrain enregistrée.", "success")
+    return redirect(url_for("parcelles.fiche", pid=pid) + "#suivi")
+
+
+@parcelles_bp.route("/<int:pid>/carte-image")
+@login_required
+def carte_image(pid):
+    """Télécharge une carte annotée (PNG) : RGB / NDVI / NDMI, période au choix."""
+    from datetime import date, datetime as _dt
+    from flask import current_app, send_file
+    from app.teledetection.gee import thumb_url
+    from app.parcelles.carte_image import composer
+
+    p = db.session.get(Parcelle, pid)
+    if not p or p.geom is None:
+        flash("Parcelle introuvable ou sans géométrie.", "warning")
+        return redirect(url_for("parcelles.liste"))
+    if not peut_voir_parcelle(current_user, pid):
+        flash("Cette parcelle est hors de votre périmètre.", "warning")
+        return redirect(url_for("parcelles.liste"))
+
+    indice = request.args.get("indice", "rgb")
+    if indice not in ("rgb", "ndvi", "ndmi"):
+        indice = "rgb"
+    d1 = request.args.get("d1") or f"{date.today().year}-05-15"
+    d2 = request.args.get("d2") or date.today().isoformat()
+
+    project = current_app.config.get("GEE_PROJECT")
+    if not project:
+        flash("GEE_PROJECT n'est pas défini dans config.py.", "danger")
+        return redirect(url_for("parcelles.fiche", pid=pid))
+
+    gj = db.session.query(func.ST_AsGeoJSON(Parcelle.geom)).filter(Parcelle.id == pid).scalar()
+    feature = {"geometry": json.loads(gj)}
+
+    # largeur approx (m) de la parcelle pour l'échelle
+    largeur_m = None
+    try:
+        bb = db.session.query(func.ST_XMin(func.ST_Envelope(func.ST_Transform(Parcelle.geom, 32628))),
+                              func.ST_XMax(func.ST_Envelope(func.ST_Transform(Parcelle.geom, 32628)))
+                              ).filter(Parcelle.id == pid).first()
+        if bb and bb[0] is not None:
+            largeur_m = abs(bb[1] - bb[0])
+    except Exception:
+        largeur_m = None
+
+    prod = p.producteur
+    meta = {
+        "producteur": prod.nom_complet if prod else "—",
+        "culture": p.culture or "—",
+        "superficie": f"{p.surface_ha:.2f} ha" if p.surface_ha else "—",
+        "commune": p.commune or "—",
+        "animateur": p.animateur or "—",
+        "date": d2,
+        "periode": f"Période : {d1} au {d2}",
+        "largeur_m": largeur_m,
+    }
+    try:
+        url = thumb_url([feature], d1, d2, project, indice=indice)
+    except Exception as exc:  # noqa
+        flash(f"Erreur Earth Engine : {exc}", "danger")
+        return redirect(url_for("parcelles.fiche", pid=pid))
+
+    import os
+    logo = os.path.join(current_app.root_path, "static", "img", "logo_ancar.png")
+    buf = composer(url, indice, meta, logo_path=logo)
+    nom = f"carte_{indice}_{(p.code or pid)}_{d2}.png".replace(" ", "_")
+    return send_file(buf, mimetype="image/png", as_attachment=True, download_name=nom)
+
+
+@parcelles_bp.route("/<int:pid>/sol", methods=["POST"])
+@login_required
+def enregistrer_sol(pid):
+    """Saisie/mise à jour de la qualité du sol d'une parcelle (niveau >= 2)."""
+    p = db.session.get(Parcelle, pid)
+    if not p:
+        flash("Parcelle introuvable.", "warning")
+        return redirect(url_for("parcelles.liste"))
+    if not peut_voir_parcelle(current_user, pid):
+        flash("Cette parcelle est hors de votre périmètre.", "warning")
+        return redirect(url_for("parcelles.liste"))
+    if current_user.niveau < 2:
+        flash("Vous n'avez pas le droit de modifier le sol.", "warning")
+        return redirect(url_for("parcelles.fiche", pid=pid))
+
+    def _f(v):
+        try:
+            return float(str(v).replace(",", ".")) if v not in (None, "") else None
+        except (TypeError, ValueError):
+            return None
+
+    p.sol_type = (request.form.get("sol_type") or None)
+    p.sol_ph = _f(request.form.get("sol_ph"))
+    p.sol_mo = _f(request.form.get("sol_mo"))
+    p.sol_fertilite = (request.form.get("sol_fertilite") or None)
+    p.sol_source = (request.form.get("sol_source") or None)
+    p.sol_note = (request.form.get("sol_note") or None)
+    db.session.commit()
+    flash("Qualité du sol enregistrée.", "success")
+    return redirect(url_for("parcelles.fiche", pid=pid) + "#sol")
+
+
+@parcelles_bp.route("/<int:pid>/potentiel", methods=["POST"])
+@login_required
+def enregistrer_potentiel(pid):
+    """Met à jour le rendement potentiel (kg/ha) d'une parcelle, et sa référence."""
+    from app.models.rendement import RendementReference
+    p = db.session.get(Parcelle, pid)
+    if not p:
+        flash("Parcelle introuvable.", "warning")
+        return redirect(url_for("parcelles.liste"))
+    if not peut_voir_parcelle(current_user, pid):
+        flash("Cette parcelle est hors de votre périmètre.", "warning")
+        return redirect(url_for("parcelles.liste"))
+    if current_user.niveau < 2:
+        flash("Vous n'avez pas le droit de modifier le rendement potentiel.", "warning")
+        return redirect(url_for("parcelles.fiche", pid=pid))
+    try:
+        val = float(str(request.form.get("rendement_potentiel", "")).replace(",", "."))
+    except (TypeError, ValueError):
+        flash("Valeur de rendement invalide.", "warning")
+        return redirect(url_for("parcelles.fiche", pid=pid) + "#potentiel")
+    p.rendement_potentiel = val
+    annee = 2026
+    ref = (RendementReference.query
+           .filter_by(parcelle_id=pid, annee=annee).first())
+    if ref:
+        ref.rendement_kg_ha = val
+        ref.source = "Potentiel variété (Mastrop)"
+    else:
+        db.session.add(RendementReference(
+            parcelle_id=pid, annee=annee, culture=(p.culture or "Mastrop"),
+            rendement_kg_ha=val, source="Potentiel variété (Mastrop)"))
+    db.session.commit()
+    flash("Rendement potentiel mis à jour.", "success")
+    return redirect(url_for("parcelles.fiche", pid=pid) + "#potentiel")
+
+
 @parcelles_bp.route("/<int:pid>/fiche")
 @login_required
 def fiche(pid):
@@ -317,9 +532,32 @@ def fiche(pid):
     if len(historique) >= 2:
         rotation = "Rotation" if len(cultures_distinctes) > 1 else "Monoculture"
 
+    # Évolution du rendement de la parcelle (par année)
+    rdt_rows = (RendementReference.query.filter_by(parcelle_id=pid)
+                .filter(RendementReference.annee.isnot(None))
+                .order_by(RendementReference.annee).all())
+    rdt_evolution = [{"annee": r.annee, "rendement": round(r.rendement_kg_ha)}
+                     for r in rdt_rows]
+
+    # Suivi de terrain (observations animateur / CAR)
+    suivis = (SuiviTerrain.query.filter_by(parcelle_id=pid)
+              .order_by(SuiviTerrain.date_obs.desc(), SuiviTerrain.id.desc()).all())
+    from app.models.campagne import Campagne as _Camp
+    campagnes_suivi = _Camp.query.order_by(_Camp.annee.desc()).all()
+    from datetime import date as _date, timedelta as _td
+    aujourdhui = _date.today().isoformat()
+    _d1 = _date(_date.today().year, 5, 15)
+    _d2 = _date.today()
+    _step = max(1, (_d2 - _d1).days // 4)
+    dl_d1 = (_d1 + _td(days=3 * _step)).isoformat()
+    dl_d2 = _d2.isoformat()
+
     return render_template("parcelles/fiche.html", p=p, serie=serie,
                            indices=indices, lecture=lecture,
-                           historique=historique, rotation=rotation)
+                           historique=historique, rotation=rotation,
+                           rdt_evolution=rdt_evolution,
+                           suivis=suivis, campagnes_suivi=campagnes_suivi,
+                           aujourdhui=aujourdhui, dl_d1=dl_d1, dl_d2=dl_d2)
 
 
 @parcelles_bp.route("/<int:pid>/geojson")
@@ -400,9 +638,18 @@ def supprimer(pid):
 @login_required
 @niveau_minimum(2)
 def importer():
+    from app.models.programme import Programme
     if request.method == "POST":
         fichier = request.files.get("fichier")
         srid_src = request.form.get("srid_source", "4326")
+        mode = request.form.get("mode", "additif")          # additif | maj
+        apercu = bool(request.form.get("apercu"))            # simulation
+        try:
+            seuil = float(request.form.get("seuil_overlap", "60")) / 100.0
+        except (TypeError, ValueError):
+            seuil = 0.60
+        seuil = min(max(seuil, 0.1), 1.0)
+
         if not fichier or fichier.filename == "":
             flash("Aucun fichier sélectionné.", "warning")
             return redirect(url_for("parcelles.importer"))
@@ -412,46 +659,103 @@ def importer():
             flash("Fichier GeoJSON invalide.", "danger")
             return redirect(url_for("parcelles.importer"))
 
-        if data.get("type") == "FeatureCollection":
-            features = data.get("features", [])
-        else:
-            features = [data]
+        features = data.get("features", []) if data.get("type") == "FeatureCollection" else [data]
 
         transformer = None
         if srid_src != "4326":
             transformer = Transformer.from_crs(
-                f"EPSG:{srid_src}", "EPSG:4326", always_xy=True
-            ).transform
+                f"EPSG:{srid_src}", "EPSG:4326", always_xy=True).transform
 
-        # Signatures géométriques déjà présentes -> dédoublonnage par la FORME
-        # (indépendant du fid, qui recommence à 1 dans chaque fichier).
         import hashlib
         from shapely.wkt import loads as _wl, dumps as _wd
 
         def _sig(gg):
             return hashlib.md5(_wd(gg, rounding_precision=6).encode()).hexdigest()
 
+        # Programme (créé à la volée si le nom saisi n'existe pas)
+        prog_nom = (request.form.get("programme") or "").strip()
+        programme_id = None
+        if prog_nom:
+            prog = Programme.query.filter(func.lower(Programme.nom) == prog_nom.lower()).first()
+            if not prog:
+                prog = Programme(nom=prog_nom, actif=True)
+                db.session.add(prog)
+                db.session.flush()
+            programme_id = prog.id
+
+        # Géométries existantes : signatures (exact) + index spatial (recouvrement)
+        existants = []   # (pid, shapely_geom)
         sigs_existantes = {}
         for (pid_ex, wktxt) in (db.session.query(Parcelle.id, func.ST_AsText(Parcelle.geom))
                                 .filter(Parcelle.geom.isnot(None)).all()):
             try:
-                sigs_existantes[_sig(_wl(wktxt))] = pid_ex
+                gg = _wl(wktxt)
+                existants.append((pid_ex, gg))
+                sigs_existantes[_sig(gg)] = pid_ex
             except Exception:
                 pass
+        geoms_exist = [g for (_, g) in existants]
+        tree = None
+        if mode == "maj" and geoms_exist:
+            from shapely.strtree import STRtree
+            tree = STRtree(geoms_exist)
 
-        codes_existants = {
-            c for (c,) in db.session.query(Parcelle.code)
-            .filter(Parcelle.code.isnot(None)).all()
-        }
+        codes_existants = {c for (c,) in db.session.query(Parcelle.code)
+                           .filter(Parcelle.code.isnot(None)).all()}
         regions_par_nom = {r.nom.strip().lower(): r for r in Region.query.all()}
         camp_cache = {c.libelle: c for c in Campagne.query.all()}
+        camp_active = (Campagne.query.filter_by(active=True)
+                       .order_by(Campagne.annee.desc()).first())
         orgs_cache = {o.nom.strip().lower(): o for o in OrganisationProducteur.query.all()}
         prods_cache = {}
         for pr in Producteur.query.all():
             prods_cache[(pr.nom_complet.strip().lower(), (pr.telephone or "").strip())] = pr
 
-        n_ok, n_skip, n_doublon, n_maj = 0, 0, 0, 0
-        maj_animateur = {}
+        def _prod_coop(nom_coop, nom_prod, tel_prod, sexe, region_obj):
+            org = orgs_cache.get(str(nom_coop).strip().lower()) if nom_coop else None
+            if nom_coop and not org:
+                org = OrganisationProducteur(nom=str(nom_coop).strip()[:150], type="Coopérative")
+                if region_obj:
+                    org.region_id = region_obj.id
+                db.session.add(org)
+                orgs_cache[str(nom_coop).strip().lower()] = org
+            prod = None
+            if nom_prod:
+                pk = (str(nom_prod).strip().lower(), (str(tel_prod).strip() if tel_prod else ""))
+                prod = prods_cache.get(pk)
+                if not prod:
+                    prod = Producteur(nom=str(nom_prod).strip()[:80],
+                                      telephone=(str(tel_prod).strip()[:30] if tel_prod else None),
+                                      sexe=sexe)
+                    if region_obj:
+                        prod.region_id = region_obj.id
+                    if org:
+                        prod.organisation = org
+                    db.session.add(prod)
+                    prods_cache[pk] = prod
+                elif org and not prod.organisation_id:
+                    prod.organisation = org
+            return prod, org
+
+        def _historique(p, props):
+            for cle, val in props.items():
+                if not val or "culture" not in cle.lower():
+                    continue
+                m = _ANNEE_RE.search(cle)
+                if not m:
+                    continue
+                annee = int(m.group(1))
+                lib = f"Hivernage {annee}"
+                camp = camp_cache.get(lib)
+                if not camp:
+                    camp = (Campagne.query.filter_by(libelle=lib).first()
+                            or Campagne(libelle=lib, annee=annee, active=False))
+                    db.session.add(camp)
+                    camp_cache[lib] = camp
+                db.session.add(HistoriqueCultural(parcelle=p, campagne=camp,
+                                                  annee=annee, culture=str(val)[:80], source="GeoJSON"))
+
+        n_new = n_upd = n_redraw = n_dup = n_skip = 0
         for feat in features:
             geom = feat.get("geometry")
             props = feat.get("properties", {}) or {}
@@ -468,149 +772,146 @@ def importer():
                 n_skip += 1
                 continue
 
+            # --- Attributs (mappage tolérant, y compris noms tronqués QGIS) ---
+            code = _premier(props, ["code", "nom", "Nom"])
+            sig = _sig(g)
+            if not code:
+                code = f"P-{sig[:8]}"
+            code = str(code)[:50]
+            surface = (_f(_premier(props, ["surface_ha", "surface", "Superficie",
+                        "Superifie", "superficie", "Surface (ha)", "Surface"]))
+                       or _ha_depuis_wgs84(g))
+            culture = _culture_courante(props) or _premier(props, [
+                "Culture hi", "Culture actuelle", "culture", "Culture", "Culture _1"])
+            dep = _premier(props, ["Departement", "Département", "Departemen", "departement"])
+            com = _premier(props, ["Commune", "commune"])
+            vil = _premier(props, ["Village", "village", "Localité", "Localite"])
+            reg = _premier(props, ["Region", "Région", "region"])
+            observations = _premier(props, ["observations", "Observations"])
+            nom_prod = _premier(props, [
+                "Prenom et nom producteur", "Nom & Prénom du producteur",
+                "Prénom et nom producteur", "Nom et prenom producteur",
+                "Prenom_nom", "producteur", "Producteur"])
+            tel_prod = _premier(props, [
+                "Telephone producteur", "Numero de telephone Producteur",
+                "Téléphone producteur", "Telephone_", "telephone"])
+            nom_coop = _premier(props, [
+                "cooperative_norm", "Nom cooperative", "Nom cooper",
+                "Coopérative", "Cooperative", "cooperative"])
             animateur = _premier(props, [
                 "Nom & Prénom de l'agent", "Nom & Prenom de l'agent",
                 "Prenom et nom enqueteur", "Prénom et nom enquêteur",
                 "Nom animateur", "animateur", "Animateur", "agent", "Agent",
                 "enqueteur", "Enquêteur"])
             animateur = str(animateur).strip()[:120] if animateur else None
+            sexe = _sexe(props)
 
-            sig = _sig(g)
-            if sig in sigs_existantes:
-                eid = sigs_existantes[sig]
-                if animateur and eid:
-                    maj_animateur[eid] = animateur   # renseigner l'animateur existant
-                n_doublon += 1
-                continue
-
-            # Code : propriété naturelle si présente, sinon dérivé de la forme (stable)
-            code = _premier(props, ["code", "nom", "Nom"])
-            if not code:
-                code = f"P-{sig[:8]}"
-            code = str(code)[:50]
-            if code in codes_existants:
-                base, k = code, 1
-                while code in codes_existants:
-                    code = f"{base}-{k}"
-                    k += 1
-
-            surface = (_f(_premier(props, ["surface_ha", "surface", "Superficie",
-                                            "superficie", "Surface (ha)", "Surface"]))
-                       or _ha_depuis_wgs84(g))
-            culture = _culture_courante(props)
-            dep = _premier(props, ["Departement", "Département", "departement"])
-            com = _premier(props, ["Commune", "commune"])
-            vil = _premier(props, ["Village", "village", "Localité", "Localite"])
-            reg = _premier(props, ["Region", "Région", "region"])
-            observations = _premier(props, ["observations", "Observations"])
-
-            # Producteur & coopérative (créés/liés au vol)
-            nom_prod = _premier(props, [
-                "Prenom et nom producteur", "Nom & Prénom du producteur",
-                "Prénom et nom producteur", "Nom et prenom producteur",
-                "producteur", "Producteur"])
-            tel_prod = _premier(props, [
-                "Telephone producteur", "Numero de telephone Producteur",
-                "Téléphone producteur", "telephone"])
-            nom_coop = _premier(props, [
-                "cooperative_norm", "Nom cooperative", "Coopérative",
-                "Cooperative", "cooperative"])
-            animateur = _premier(props, [
-                "Nom & Prénom de l'agent", "Nom & Prenom de l'agent",
-                "Prenom et nom enqueteur", "Prénom et nom enquêteur",
-                "Nom animateur", "animateur", "Animateur", "agent", "Agent",
-                "enqueteur", "Enquêteur"]) if False else animateur
+            # --- Détermination de la cible ---
+            cible = sigs_existantes.get(sig)     # correspondance exacte (même forme)
+            is_redraw = False
+            if cible is None and mode == "maj" and tree is not None and g.area:
+                best_pid, best_r = None, 0.0
+                for idx in tree.query(g):
+                    cand = geoms_exist[int(idx)]
+                    try:
+                        r = g.intersection(cand).area / g.area
+                    except Exception:
+                        continue
+                    if r > best_r:
+                        best_r, best_pid = r, existants[int(idx)][0]
+                if best_pid is not None and best_r >= seuil:
+                    cible, is_redraw = best_pid, True
 
             try:
-                created_org = created_prod = None
                 with db.session.begin_nested():
                     region_obj = regions_par_nom.get(reg.strip().lower()) if reg else None
 
-                    org = orgs_cache.get(str(nom_coop).strip().lower()) if nom_coop else None
-                    if nom_coop and not org:
-                        org = OrganisationProducteur(nom=str(nom_coop).strip()[:150], type="Coopérative")
+                    if cible is None:
+                        # ----- CRÉATION -----
+                        if code in codes_existants:
+                            base, k = code, 1
+                            while code in codes_existants:
+                                code = f"{base}-{k}"; k += 1
+                        prod, org = _prod_coop(nom_coop, nom_prod, tel_prod, sexe, region_obj)
+                        p = Parcelle(code=code, culture=culture, surface_ha=surface,
+                                     observations=observations,
+                                     departement=(dep.strip() if dep else None),
+                                     commune=(com.strip() if com else None),
+                                     village=(vil.strip() if vil else None),
+                                     animateur=animateur,
+                                     geom=WKTElement(g.wkt, srid=4326))
                         if region_obj:
-                            org.region_id = region_obj.id
-                        db.session.add(org)
-                        created_org = (str(nom_coop).strip().lower(), org)
+                            p.region_id = region_obj.id
+                        if programme_id:
+                            p.programme_id = programme_id
+                        if camp_active:
+                            p.campagne_id = camp_active.id
+                        if prod:
+                            p.producteur = prod
+                        db.session.add(p)
+                        _historique(p, props)
+                        sigs_existantes[sig] = None
+                        codes_existants.add(code)
+                        n_new += 1
 
-                    prod = None
-                    if nom_prod:
-                        pk = (str(nom_prod).strip().lower(), (str(tel_prod).strip() if tel_prod else ""))
-                        prod = prods_cache.get(pk)
-                        if not prod:
-                            prod = Producteur(
-                                nom=str(nom_prod).strip()[:80],
-                                telephone=(str(tel_prod).strip()[:30] if tel_prod else None),
-                                sexe=_sexe(props))
+                    elif mode == "additif":
+                        # ----- doublon (forme identique) : on complète seulement -----
+                        p = db.session.get(Parcelle, cible)
+                        if p:
+                            if animateur and not p.animateur:
+                                p.animateur = animateur
+                            if programme_id and not p.programme_id:
+                                p.programme_id = programme_id
+                        n_dup += 1
+
+                    else:
+                        # ----- MISE À JOUR (mode maj) -----
+                        p = db.session.get(Parcelle, cible)
+                        if p:
+                            prod, org = _prod_coop(nom_coop, nom_prod, tel_prod, sexe, region_obj)
+                            if is_redraw:
+                                p.geom = WKTElement(g.wkt, srid=4326)
+                            if culture:
+                                p.culture = culture
+                            if surface:
+                                p.surface_ha = surface
+                            if dep:
+                                p.departement = dep.strip()
+                            if com:
+                                p.commune = com.strip()
+                            if vil:
+                                p.village = vil.strip()
                             if region_obj:
-                                prod.region_id = region_obj.id
-                            if org:
-                                prod.organisation = org
-                            db.session.add(prod)
-                            created_prod = (pk, prod)
-                        elif org and not prod.organisation_id:
-                            prod.organisation = org
-
-                    p = Parcelle(
-                        code=code, culture=culture, surface_ha=surface,
-                        observations=observations,
-                        departement=(dep.strip() if dep else None),
-                        commune=(com.strip() if com else None),
-                        village=(vil.strip() if vil else None),
-                        animateur=(str(animateur).strip()[:120] if animateur else None),
-                        geom=WKTElement(g.wkt, srid=4326),
-                    )
-                    if region_obj:
-                        p.region_id = region_obj.id
-                    if prod:
-                        p.producteur = prod
-                    db.session.add(p)
-
-                    # Historique cultural : "... culture ... AAAA" -> campagne Hivernage AAAA
-                    for cle, val in props.items():
-                        if not val or "culture" not in cle.lower():
-                            continue
-                        m = _ANNEE_RE.search(cle)
-                        if not m:
-                            continue
-                        annee = int(m.group(1))
-                        lib = f"Hivernage {annee}"
-                        camp = camp_cache.get(lib)
-                        if not camp:
-                            camp = (Campagne.query.filter_by(libelle=lib).first()
-                                    or Campagne(libelle=lib, annee=annee, active=False))
-                            db.session.add(camp)
-                            camp_cache[lib] = camp
-                        db.session.add(HistoriqueCultural(
-                            parcelle=p, campagne=camp, annee=annee,
-                            culture=str(val)[:80], source="GeoJSON"))
-                sigs_existantes[sig] = None
-                codes_existants.add(code)
-                if created_org:
-                    orgs_cache[created_org[0]] = created_org[1]
-                if created_prod:
-                    prods_cache[created_prod[0]] = created_prod[1]
-                n_ok += 1
+                                p.region_id = region_obj.id
+                            if programme_id:
+                                p.programme_id = programme_id
+                            if animateur:
+                                p.animateur = animateur
+                            if prod:
+                                p.producteur = prod
+                            if is_redraw:
+                                n_redraw += 1
+                            else:
+                                n_upd += 1
             except Exception:
                 n_skip += 1
 
-        # Renseigner l'animateur sur les parcelles déjà existantes
-        for pid_maj, anim in maj_animateur.items():
-            Parcelle.query.filter_by(id=pid_maj).update(
-                {Parcelle.animateur: anim}, synchronize_session=False)
-            n_maj += 1
+        if apercu:
+            db.session.rollback()
+            flash(f"APERÇU (aucune écriture) — mode « {mode} » : "
+                  f"{n_new} à créer, {n_upd} attribut(s) à mettre à jour, "
+                  f"{n_redraw} redessinée(s) détectée(s), {n_dup} inchangée(s) (doublon), "
+                  f"{n_skip} en erreur. Décochez « aperçu » pour appliquer.", "info")
+            return redirect(url_for("parcelles.importer"))
 
         db.session.commit()
-        flash(
-            f"Import additif : {n_ok} nouvelle(s) parcelle(s), "
-            f"{n_doublon} déjà présente(s) ignorée(s) (dont {n_maj} animateur mis à jour), "
-            f"{n_skip} en erreur. Localisation et historique inclus.",
-            "success",
-        )
+        flash(f"Import « {mode} » : {n_new} créée(s), {n_upd} mise(s) à jour, "
+              f"{n_redraw} redessinée(s), {n_dup} inchangée(s), {n_skip} en erreur."
+              + (f" Programme « {prog_nom} » appliqué." if prog_nom else ""), "success")
         return redirect(url_for("parcelles.carte"))
 
-    return render_template("parcelles/import.html")
+    programmes = Programme.query.order_by(Programme.nom).all()
+    return render_template("parcelles/import.html", programmes=programmes)
 
 
 _ANNEE_RE = re.compile(r"(20\d{2})")

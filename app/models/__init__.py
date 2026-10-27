@@ -22,3 +22,7 @@ __all__ = [
     "IndiceVegetation",
     "HistoriqueCultural",
 ]
+from .suivi import SuiviTerrain
+from .programme import Programme
+from .notification import NotificationLog
+from .financement import FinancementOP

@@ -16,6 +16,7 @@ class RendementReference(db.Model):
     culture = db.Column(db.String(80))          # instantané au moment de la saisie
     rendement_kg_ha = db.Column(db.Float, nullable=False)
     ndvi_max = db.Column(db.Float)              # instantané du pic NDVI
+    source = db.Column(db.String(40))          # ex. DAPSA (département), Mesure terrain
     date_saisie = db.Column(db.DateTime, default=datetime.utcnow)
 
     parcelle = db.relationship("Parcelle")

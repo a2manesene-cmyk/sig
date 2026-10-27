@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Financement — ANCAR SIG{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="mb-0"><i class="bi bi-cash-coin text-success"></i> Financement des OP <span class="badge bg-secondary">La Banque Agricole</span></h4>
+  {% if current_user.niveau >= 3 %}
+  <a href="{{ url_for('financement.importer') }}" class="btn ancar-btn btn-sm"><i class="bi bi-upload"></i> Importer (Excel)</a>
+  {% endif %}
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-md-4"><div class="card stat-card h-100"><div class="card-body">
+    <div class="stat-label">Montant sollicité</div>
+    <div class="stat-value" style="font-size:1.4rem">{{ "{:,.0f}".format(total_sollicite).replace(",", " ") }} FCFA</div></div></div></div>
+  <div class="col-md-4"><div class="card stat-card h-100"><div class="card-body">
+    <div class="stat-label">Montant accordé</div>
+    <div class="stat-value" style="font-size:1.4rem">{{ "{:,.0f}".format(total_accorde).replace(",", " ") }} FCFA</div></div></div></div>
+  <div class="col-md-4"><div class="card stat-card h-100"><div class="card-body">
+    <div class="stat-label">Réalisation</div>
+    <div class="stat-value" style="font-size:1.4rem">{{ "{:,.0f}".format(total_realisation).replace(",", " ") }} FCFA</div></div></div></div>
+</div>
+
+<div class="card border-0 shadow-sm"><div class="card-body p-0">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead class="table-light"><tr>
+        <th>Région</th><th>OP (raison sociale)</th><th class="text-end">Producteurs</th>
+        <th class="text-end">Sollicité</th><th class="text-end">Accordé</th>
+        <th>État</th><th class="text-center">Liée</th>
+      </tr></thead>
+      <tbody>
+        {% for l in lignes %}
+        <tr>
+          <td>{{ l.region or '—' }}</td>
+          <td>{{ l.raison_sociale }}</td>
+          <td class="text-end">{{ l.nb_producteurs or '—' }}</td>
+          <td class="text-end">{{ "{:,.0f}".format(l.montant_sollicite).replace(",", " ") if l.montant_sollicite else '—' }}</td>
+          <td class="text-end fw-semibold">{{ "{:,.0f}".format(l.montant_accorde).replace(",", " ") if l.montant_accorde else '—' }}</td>
+          <td><span class="badge bg-{{ 'success' if l.etat and 'ccord' in l.etat else ('danger' if l.etat and 'favorable' in l.etat|lower else 'secondary') }}">{{ l.etat or '—' }}</span></td>
+          <td class="text-center">{% if l.organisation_id %}<i class="bi bi-check-circle text-success" title="{{ l.organisation.nom }}"></i>{% else %}<span class="text-muted" title="OP non trouvée en base">—</span>{% endif %}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7" class="text-center text-muted py-3">Aucun financement enregistré. Importez le fichier Excel.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div></div>
+<p class="text-muted small mt-2">{{ nb_lies }} financement(s) rattaché(s) à une OP de la base. Montants en FCFA.</p>
+{% endblock %}

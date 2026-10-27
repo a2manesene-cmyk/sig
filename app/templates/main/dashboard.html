@@ -14,10 +14,10 @@
 
 <!-- KPIs généraux -->
 <div class="row g-3 mb-4">
-  <div class="col-6 col-lg-3"><div class="card stat-card h-100"><div class="card-body">
+  <div class="col-6 col-lg-3"><a href="{{ url_for('parcelles.liste') }}" class="text-decoration-none text-reset"><div class="card stat-card h-100"><div class="card-body">
     <div class="stat-icon"><i class="bi bi-map"></i></div>
-    <div class="stat-value">{{ kpis.parcelles }}</div><div class="stat-label">Parcelles</div>
-  </div></div></div>
+    <div class="stat-value">{{ kpis.parcelles }}</div><div class="stat-label">Parcelles &rsaquo;</div>
+  </div></div></a></div>
   <div class="col-6 col-lg-3"><div class="card stat-card h-100"><div class="card-body">
     <div class="stat-icon"><i class="bi bi-rulers"></i></div>
     <div class="stat-value">{{ '%.1f'|format(kpis.superficie) }}</div><div class="stat-label">Superficie (ha)</div>
@@ -63,14 +63,14 @@
     <div class="stat-value">{{ '%.2f'|format(teledetection.ndvi_moyen) if teledetection.ndvi_moyen is not none else '—' }}</div>
     <div class="stat-label">Vigueur moyenne (NDVI)</div>
   </div></div></div>
-  <div class="col-6 col-lg-3"><div class="card stat-card h-100" style="border-left-color:#d73027"><div class="card-body">
+  <div class="col-6 col-lg-3"><a href="{{ url_for('parcelles.liste') }}?etat=faible" class="text-decoration-none text-reset"><div class="card stat-card h-100" style="border-left-color:#d73027"><div class="card-body">
     <div class="stat-icon" style="color:#d73027"><i class="bi bi-exclamation-triangle"></i></div>
-    <div class="stat-value">{{ teledetection.nb_faible }}</div><div class="stat-label">Parcelles à faible vigueur</div>
-  </div></div></div>
-  <div class="col-6 col-lg-3"><div class="card stat-card h-100" style="border-left-color:#a50026"><div class="card-body">
+    <div class="stat-value">{{ teledetection.nb_faible }}</div><div class="stat-label">Parcelles à faible vigueur &rsaquo;</div>
+  </div></div></a></div>
+  <div class="col-6 col-lg-3"><a href="{{ url_for('parcelles.liste') }}?hydrique=1" class="text-decoration-none text-reset"><div class="card stat-card h-100" style="border-left-color:#a50026"><div class="card-body">
     <div class="stat-icon" style="color:#a50026"><i class="bi bi-droplet"></i></div>
-    <div class="stat-value">{{ teledetection.nb_stress }}</div><div class="stat-label">Parcelles en stress hydrique</div>
-  </div></div></div>
+    <div class="stat-value">{{ teledetection.nb_stress }}</div><div class="stat-label">Parcelles en stress hydrique &rsaquo;</div>
+  </div></div></a></div>
 </div>
 <div class="row g-3">
   <div class="col-lg-6"><div class="card border-0 shadow-sm h-100"><div class="card-body">
@@ -88,6 +88,55 @@
   Lancez un calcul depuis <a href="{{ url_for('teledetection.calculer') }}">Télédétection → Calculer</a>.
 </div>
 {% endif %}
+
+{% if kpis.rendement_moyen or kpis.rendement_estime or kpis.production_t %}
+<h5 class="mt-4 mb-2"><i class="bi bi-bar-chart-line text-success"></i> Rendement</h5>
+<div class="row g-3 mb-3">
+  {% if kpis.rendement_moyen %}
+  <div class="col-6 col-lg-3"><a href="{{ url_for('rendement.liste') }}" class="text-decoration-none text-reset"><div class="card stat-card h-100"><div class="card-body">
+    <div class="stat-icon"><i class="bi bi-bar-chart-line"></i></div>
+    <div class="stat-value">{{ "{:,}".format(kpis.rendement_moyen).replace(",", " ") }}</div>
+    <div class="stat-label">Rendement moyen (kg/ha) &rsaquo;</div>
+  </div></div></a></div>
+  {% endif %}
+  <div class="col-6 col-lg-3"><div class="card stat-card h-100"><div class="card-body">
+    <div class="stat-icon"><i class="bi bi-clipboard-data"></i></div>
+    <div class="stat-value">{{ kpis.rendement_nb }}</div>
+    <div class="stat-label">Parcelles avec rendement (réf.)</div>
+  </div></div></div>
+  <div class="col-6 col-lg-3"><a href="{{ url_for('rendement.liste') }}" class="text-decoration-none text-reset"><div class="card stat-card h-100" style="border-left-color:#2E7D46"><div class="card-body">
+    <div class="stat-icon" style="color:#2E7D46"><i class="bi bi-graph-up-arrow"></i></div>
+    {% if kpis.rendement_estime %}
+    <div class="stat-value">{{ "{:,}".format(kpis.rendement_estime).replace(",", " ") }}</div>
+    <div class="stat-label">Rendement estimé moyen — satellite (kg/ha) &rsaquo;</div>
+    {% else %}
+    <div class="stat-value" style="font-size:1.1rem">—</div>
+    <div class="stat-label">Rendement estimé (satellite) : nécessite des rendements réels</div>
+    {% endif %}
+  </div></div></a></div>
+  {% if kpis.production_t %}
+  <div class="col-6 col-lg-3"><a href="{{ url_for('rendement.production') }}" class="text-decoration-none text-reset"><div class="card stat-card h-100" style="border-left-color:#9A7B14"><div class="card-body">
+    <div class="stat-icon" style="color:#9A7B14"><i class="bi bi-box-seam"></i></div>
+    <div class="stat-value">{{ "{:,.1f}".format(kpis.production_t).replace(",", " ") }}</div>
+    <div class="stat-label">Production attendue (tonnes) &rsaquo;</div>
+  </div></div></a></div>
+  {% endif %}
+</div>
+<div class="row g-3">
+  {% if par_rendement.labels %}
+  <div class="col-lg-6"><div class="card border-0 shadow-sm h-100"><div class="card-body">
+    <h6 class="text-muted text-uppercase small mb-3">Rendement moyen par département (kg/ha)</h6>
+    <canvas id="chartRendement" height="150"></canvas>
+  </div></div></div>
+  {% endif %}
+  {% if par_production.labels %}
+  <div class="col-lg-6"><div class="card border-0 shadow-sm h-100"><div class="card-body">
+    <h6 class="text-muted text-uppercase small mb-3">Production attendue par département (tonnes)</h6>
+    <canvas id="chartProduction" height="150"></canvas>
+  </div></div></div>
+  {% endif %}
+</div>
+{% endif %}
 {% endblock %}
 
 {% block scripts %}
@@ -95,6 +144,9 @@
 <script>
 const VERT = '#2E7D46', VERT_FONCE = '#1E5631';
 const PALETTE = ['#1E5631','#2E7D46','#4CAF50','#9A7B14','#C9A227','#8D6E63','#00897B','#5C6BC0','#EF6C00','#B71C1C','#546E7A','#7CB342','#00838F'];
+const LISTE = "{{ url_for('parcelles.liste') }}";
+function aller(params){ location.href = LISTE + '?' + new URLSearchParams(params).toString(); }
+function clic(cb){ return (evt, els) => { if (els && els.length) cb(els[0].index); }; }
 
 const region = {{ par_region|tojson }};
 const culture = {{ par_culture|tojson }};
@@ -103,18 +155,38 @@ const org = {{ par_organisation|tojson }};
 new Chart(document.getElementById('chartRegion'), {
   type: 'bar',
   data: { labels: region.labels, datasets: [{ label: 'Superficie (ha)', data: region.superficie, backgroundColor: VERT }] },
-  options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+  options: { onClick: clic(i => aller({ region: region.ids[i] })),
+    plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
 });
 new Chart(document.getElementById('chartCulture'), {
   type: 'doughnut',
   data: { labels: culture.labels, datasets: [{ data: culture.data, backgroundColor: PALETTE }] },
-  options: { plugins: { legend: { position: 'right', labels: { boxWidth: 12, font: { size: 11 } } } } }
+  options: { onClick: clic(i => aller({ culture: culture.labels[i] })),
+    plugins: { legend: { position: 'right', labels: { boxWidth: 12, font: { size: 11 } } } } }
 });
 new Chart(document.getElementById('chartOrg'), {
   type: 'bar',
   data: { labels: org.labels, datasets: [{ label: 'Superficie (ha)', data: org.superficie, backgroundColor: VERT_FONCE }] },
-  options: { indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true } } }
+  options: { indexAxis: 'y', onClick: clic(i => aller({ organisation: org.ids[i] })),
+    plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true } } }
 });
+
+{% if kpis.rendement_moyen and par_rendement.labels %}
+const rendement = {{ par_rendement|tojson }};
+new Chart(document.getElementById('chartRendement'), {
+  type: 'bar',
+  data: { labels: rendement.labels, datasets: [{ label: 'Rendement (kg/ha)', data: rendement.data, backgroundColor: '#C9A227' }] },
+  options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+});
+{% endif %}
+{% if kpis.production_t and par_production.labels %}
+const production = {{ par_production|tojson }};
+new Chart(document.getElementById('chartProduction'), {
+  type: 'bar',
+  data: { labels: production.labels, datasets: [{ label: 'Production (t)', data: production.data, backgroundColor: '#1E5631' }] },
+  options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+});
+{% endif %}
 
 {% if teledetection.actif %}
 const vigueur = {{ teledetection.vigueur|tojson }};
@@ -122,12 +194,14 @@ const stress = {{ teledetection.stress|tojson }};
 new Chart(document.getElementById('chartVigueur'), {
   type: 'doughnut',
   data: { labels: vigueur.labels, datasets: [{ data: vigueur.data, backgroundColor: vigueur.couleurs }] },
-  options: { plugins: { legend: { position: 'right', labels: { boxWidth: 12, font: { size: 11 } } } } }
+  options: { onClick: clic(i => aller({ etat: vigueur.filtres[i] })),
+    plugins: { legend: { position: 'right', labels: { boxWidth: 12, font: { size: 11 } } } } }
 });
 new Chart(document.getElementById('chartStress'), {
   type: 'bar',
   data: { labels: stress.labels, datasets: [{ label: 'Parcelles', data: stress.data, backgroundColor: stress.couleurs }] },
-  options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+  options: { onClick: clic(i => { const f = stress.filtres[i]; aller(f ? { hydrique: f } : {}); }),
+    plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
 });
 {% endif %}
 </script>

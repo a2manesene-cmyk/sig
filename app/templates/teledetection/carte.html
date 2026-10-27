@@ -81,25 +81,30 @@ L.control.layers(
 
 // Interprétation agronomique d'une valeur
 // Code couleur unifié : rouge = mauvais, orange = moyen, vert = bon (échelle maïs)
-const C_ROUGE = '#d73027', C_ORANGE = '#F39C12', C_JAUNE = '#f4c430',
-      C_VERT = '#1a9850', C_VERT2 = '#006837', C_GRIS = '#bdbdbd', C_EAU = '#1565C0';
+const C_ROUGE = '#d73027', C_ORANGE = '#F39C12', C_JAUNE = '#F4D03F',
+      C_VERTC = '#a6d96a', C_VERT = '#1a9850', C_GRIS = '#bdbdbd', C_EAU = '#1565C0';
+const NDMI_COL = ['#deebf7', '#9ecae1', '#6baed6', '#3182bd', '#08519c'];
 function interpret(indice, v) {
   if (v == null) return { t: '—', c: C_GRIS };
   if (['ndvi','savi','evi'].includes(indice)) {
-    if (v < 0.08) return { t: 'Très faible', c: C_ROUGE };
-    if (v < 0.25) return { t: 'Modérée', c: C_ORANGE };
-    return { t: 'Dense', c: C_VERT };
+    if (v < 0.10) return { t: 'Sol nu / Échec', c: C_ROUGE };
+    if (v < 0.20) return { t: 'Végétation critique', c: C_ORANGE };
+    if (v < 0.35) return { t: 'Retard / À surveiller', c: C_JAUNE };
+    if (v < 0.55) return { t: 'Bon comportement', c: C_VERTC };
+    return { t: 'Excellent développement', c: C_VERT };
   }
   if (indice === 'ndmi') {
-    return { t: (v < 0.10 ? 'Faible humidité' : (v < 0.25 ? 'Humidité moyenne' : 'Bonne humidité')), c: couleurHumidite(v) };
+    if (v < 0.00) return { t: 'Stress hydrique sévère', c: NDMI_COL[0] };
+    if (v < 0.10) return { t: 'Stress hydrique modéré', c: NDMI_COL[1] };
+    if (v < 0.20) return { t: 'Humidité intermédiaire', c: NDMI_COL[2] };
+    if (v < 0.35) return { t: 'Humidité élevée', c: NDMI_COL[3] };
+    return { t: 'Végétation très humide', c: NDMI_COL[4] };
   }
   if (indice === 'ndwi') {
-    return { t: (v < 0 ? "Peu / pas d'eau" : 'Présence d\'eau'), c: couleurEau(v) };
+    return { t: (v < 0 ? "Peu / pas d'eau" : "Présence d'eau"), c: couleurEau(v) };
   }
   return { t: '', c: C_GRIS };
 }
-
-// Dégradés blanc -> bleu selon la valeur
 function _degradeBleu(v, vmin, vmax) {
   if (v == null) return C_GRIS;
   const t = Math.max(0, Math.min(1, (v - vmin) / (vmax - vmin)));
@@ -108,10 +113,7 @@ function _degradeBleu(v, vmin, vmax) {
   const b = Math.round(255 + t * (192 - 255));
   return `rgb(${r},${g},${b})`;
 }
-function couleurEau(v) { return _degradeBleu(v, -0.30, 0.50); }       // NDWI
-function couleurHumidite(v) { return _degradeBleu(v, -0.10, 0.40); } // NDMI
-
-// Couleur cartographique = 3 classes via interpret
+function couleurEau(v) { return _degradeBleu(v, -0.30, 0.50); }
 function couleur(indice, v) { return interpret(indice, v).c; }
 
 // Libellés de légende selon le thème de l'indice
@@ -140,15 +142,17 @@ function chargerLegende(indice) {
         '<div class="d-flex justify-content-between" style="width:120px">' +
         '<span class="small">Absence</span><span class="small">Présence</span></div>';
     } else if (indice === 'ndmi') {
-      html += '<div class="small" style="margin:2px 0 3px">' +
-        '<span style="display:inline-block;width:120px;height:12px;border:1px solid #999;' +
-        'background:linear-gradient(to right,#ffffff,#1565C0)"></span></div>' +
-        '<div class="d-flex justify-content-between" style="width:120px">' +
-        '<span class="small">Sec</span><span class="small">Humide</span></div>';
+      html += li(NDMI_COL[0], 'Stress hydrique sévère (&lt; 0)') +
+              li(NDMI_COL[1], 'Stress hydrique modéré (0–0,10)') +
+              li(NDMI_COL[2], 'Humidité intermédiaire (0,10–0,20)') +
+              li(NDMI_COL[3], 'Humidité élevée (0,20–0,35)') +
+              li(NDMI_COL[4], 'Végétation très humide (≥ 0,35)');
     } else {
-      html += li(C_ROUGE, 'Très faible (&lt; 0,08)') +
-              li(C_ORANGE, 'Modérée (0,08–0,25)') +
-              li(C_VERT, 'Dense (&ge; 0,25)');
+      html += li(C_ROUGE, 'Sol nu / Échec (&lt; 0,10)') +
+              li(C_ORANGE, 'Végétation critique (0,10–0,20)') +
+              li(C_JAUNE, 'Retard / À surveiller (0,20–0,35)') +
+              li(C_VERTC, 'Bon comportement (0,35–0,55)') +
+              li(C_VERT, 'Excellent développement (≥ 0,55)');
     }
     div.innerHTML = html;
     return div;

@@ -38,7 +38,7 @@ def parcelle_ids(user):
         if not deps:
             return []
         q = q.filter(func.lower(func.trim(Parcelle.departement)).in_(deps))
-    elif code == "CAR":
+    elif code in ("CAR", "ANIMATEUR"):
         coms = _coms(user)
         if not coms:
             return []

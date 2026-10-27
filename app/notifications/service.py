@@ -78,12 +78,17 @@ def envoyer(user, base_static, client=None, type_alerte="stress"):
             try:
                 texte_local = message(lang, type_alerte, prod.nom_complet, codes)
                 texte_fr = message("fr", type_alerte, prod.nom_complet, codes)
-                chemin, tmp = generer_audio(texte_fr, texte_local, lang,
-                                            type_alerte, base_static)
-                media_id = client.upload_media(chemin, "audio/mpeg")
-                client.send_audio(numero, media_id)
-                if ENVOYER_TEXTE:
+                try:
+                    chemin, tmp = generer_audio(texte_fr, texte_local, lang,
+                                                type_alerte, base_static)
+                    media_id = client.upload_media(chemin, "audio/mpeg")
+                    client.send_audio(numero, media_id)
+                    if ENVOYER_TEXTE:
+                        client.send_text(numero, texte_local)
+                except Exception as audio_exc:   # audio indisponible -> repli texte
                     client.send_text(numero, texte_local)
+                    statut = "envoye"
+                    detail = "audio indisponible, message texte envoyé"
             except Exception as exc:   # noqa
                 statut, detail = "echec", str(exc)[:200]
 

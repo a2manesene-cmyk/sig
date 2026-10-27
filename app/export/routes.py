@@ -18,9 +18,14 @@ from app.models.filiere import Filiere
 from app.models.campagne import Campagne
 from app.models.indice import IndiceVegetation
 from app.models.historique import HistoriqueCultural
+from app.models.programme import Programme
 from app.scoping import parcelle_ids, producteur_ids, organisation_ids
 
 export_bp = Blueprint("export", __name__, url_prefix="/export")
+
+# Seuils (alignés sur les alertes) : stress hydrique = NDMI faible ; problème végétation = NDVI faible
+SEUIL_NDVI = 0.25
+SEUIL_NDMI = 0.10
 
 
 def _pids():
@@ -32,10 +37,11 @@ def _parcelles():
     q = (db.session.query(
             Parcelle.code, Parcelle.culture, Parcelle.surface_ha,
             Producteur.prenom, Producteur.nom, Producteur.telephone,
-            OrganisationProducteur.nom, Region.nom, Filiere.nom, Campagne.libelle,
-            Parcelle.geom.isnot(None))
+            OrganisationProducteur.nom, Programme.nom, Region.nom, Filiere.nom,
+            Campagne.libelle, Parcelle.geom.isnot(None))
          .outerjoin(Producteur, Producteur.id == Parcelle.producteur_id)
          .outerjoin(OrganisationProducteur, OrganisationProducteur.id == Producteur.organisation_id)
+         .outerjoin(Programme, Programme.id == Parcelle.programme_id)
          .outerjoin(Region, Region.id == Producteur.region_id)
          .outerjoin(Filiere, Filiere.id == Parcelle.filiere_id)
          .outerjoin(Campagne, Campagne.id == Parcelle.campagne_id))
@@ -44,11 +50,11 @@ def _parcelles():
         q = q.filter(Parcelle.id.in_(_s))
     q = q.order_by(Parcelle.code)
     headers = ["Code", "Culture", "Surface (ha)", "Producteur", "Téléphone",
-               "Organisation", "Région", "Filière", "Campagne", "Géolocalisée"]
+               "Organisation (OP)", "Programme", "Région", "Filière", "Campagne", "Géolocalisée"]
     rows = []
-    for code, cult, surf, pre, nom, tel, org, reg, fil, camp, geo in q.all():
+    for code, cult, surf, pre, nom, tel, org, prog, reg, fil, camp, geo in q.all():
         producteur = f"{pre or ''} {nom or ''}".strip() if (pre or nom) else ""
-        rows.append([code, cult, surf, producteur, tel, org, reg, fil, camp,
+        rows.append([code, cult, surf, producteur, tel, org, prog, reg, fil, camp,
                      "Oui" if geo else "Non"])
     return headers, rows
 
@@ -155,9 +161,12 @@ def _alertes():
 def _parcelles_geojson():
     rows = (db.session.query(
                 Parcelle.code, Parcelle.culture, Parcelle.surface_ha,
-                Producteur.prenom, Producteur.nom, Region.nom, Filiere.nom,
+                Producteur.prenom, Producteur.nom, OrganisationProducteur.nom,
+                Programme.nom, Region.nom, Filiere.nom,
                 Campagne.libelle, func.ST_AsGeoJSON(Parcelle.geom))
             .outerjoin(Producteur, Producteur.id == Parcelle.producteur_id)
+            .outerjoin(OrganisationProducteur, OrganisationProducteur.id == Producteur.organisation_id)
+            .outerjoin(Programme, Programme.id == Parcelle.programme_id)
             .outerjoin(Region, Region.id == Producteur.region_id)
             .outerjoin(Filiere, Filiere.id == Parcelle.filiere_id)
             .outerjoin(Campagne, Campagne.id == Parcelle.campagne_id)
@@ -166,7 +175,7 @@ def _parcelles_geojson():
     if _s is not None:
         rows = rows.filter(Parcelle.id.in_(_s))
     features = []
-    for code, cult, surf, pre, nom, reg, fil, camp, gj in rows.all():
+    for code, cult, surf, pre, nom, org, prog, reg, fil, camp, gj in rows.all():
         if not gj:
             continue
         features.append({
@@ -175,7 +184,79 @@ def _parcelles_geojson():
             "properties": {
                 "code": code, "culture": cult, "surface_ha": surf,
                 "producteur": f"{pre or ''} {nom or ''}".strip(),
+                "organisation": org, "programme": prog,
                 "region": reg, "filiere": fil, "campagne": camp,
+            },
+        })
+    return {"type": "FeatureCollection", "features": features}
+
+
+def _sub_dernier_indice():
+    return (db.session.query(
+                IndiceVegetation.parcelle_id.label("pid"),
+                func.max(IndiceVegetation.date).label("d"))
+            .group_by(IndiceVegetation.parcelle_id).subquery())
+
+
+def _stress_query(critere):
+    sub = _sub_dernier_indice()
+    q = (db.session.query(
+            Parcelle.code, Parcelle.culture, Parcelle.surface_ha,
+            Producteur.prenom, Producteur.nom, Producteur.telephone,
+            OrganisationProducteur.nom, Programme.nom, Region.nom,
+            Parcelle.departement, Parcelle.commune, Parcelle.village, Parcelle.animateur,
+            IndiceVegetation.ndvi, IndiceVegetation.ndmi, IndiceVegetation.date,
+            func.ST_AsGeoJSON(Parcelle.geom), Parcelle.geom.isnot(None))
+         .outerjoin(Producteur, Producteur.id == Parcelle.producteur_id)
+         .outerjoin(OrganisationProducteur, OrganisationProducteur.id == Producteur.organisation_id)
+         .outerjoin(Programme, Programme.id == Parcelle.programme_id)
+         .outerjoin(Region, Region.id == Producteur.region_id)
+         .join(sub, sub.c.pid == Parcelle.id)
+         .join(IndiceVegetation, and_(IndiceVegetation.parcelle_id == Parcelle.id,
+                                      IndiceVegetation.date == sub.c.d)))
+    _s = _pids()
+    if _s is not None:
+        q = q.filter(Parcelle.id.in_(_s))
+    if critere == "hydrique":
+        q = q.filter(IndiceVegetation.ndmi < SEUIL_NDMI)
+    elif critere == "vegetation":
+        q = q.filter(IndiceVegetation.ndvi < SEUIL_NDVI)
+    else:  # combine
+        q = q.filter(IndiceVegetation.ndvi < SEUIL_NDVI, IndiceVegetation.ndmi < SEUIL_NDMI)
+    return q.order_by(Parcelle.code)
+
+
+_H_STRESS = ["Code", "Culture", "Surface (ha)", "Producteur", "Téléphone",
+             "Organisation (OP)", "Programme", "Région", "Département", "Commune",
+             "Village", "Animateur", "NDVI", "NDMI", "Date", "Géolocalisée"]
+
+
+def _stress_rows(critere):
+    rows = []
+    for (code, cult, surf, pre, nom, tel, org, prog, reg, dep, com, vil, anim,
+         ndvi, ndmi, dt, gj, geo) in _stress_query(critere).all():
+        producteur = f"{pre or ''} {nom or ''}".strip()
+        rows.append([code, cult, surf, producteur, tel, org, prog, reg, dep, com, vil, anim,
+                     round(ndvi, 3) if ndvi is not None else None,
+                     round(ndmi, 3) if ndmi is not None else None,
+                     dt.isoformat() if dt else None, "Oui" if geo else "Non"])
+    return _H_STRESS, rows
+
+
+def _stress_geojson(critere):
+    features = []
+    for (code, cult, surf, pre, nom, tel, org, prog, reg, dep, com, vil, anim,
+         ndvi, ndmi, dt, gj, geo) in _stress_query(critere).all():
+        if not gj:
+            continue
+        features.append({
+            "type": "Feature", "geometry": json.loads(gj),
+            "properties": {
+                "code": code, "culture": cult, "surface_ha": surf,
+                "producteur": f"{pre or ''} {nom or ''}".strip(), "telephone": tel,
+                "organisation": org, "programme": prog, "region": reg,
+                "departement": dep, "commune": com, "village": vil, "animateur": anim,
+                "ndvi": ndvi, "ndmi": ndmi, "date": dt.isoformat() if dt else None,
             },
         })
     return {"type": "FeatureCollection", "features": features}
@@ -184,6 +265,18 @@ def _parcelles_geojson():
 DATASETS = {
     "parcelles":     {"label": "Parcelles", "builder": _parcelles,
                       "geojson": _parcelles_geojson, "formats": ["xlsx", "csv", "geojson"]},
+    "stress_hydrique":   {"label": "Parcelles en stress hydrique (NDMI faible)",
+                          "builder": lambda: _stress_rows("hydrique"),
+                          "geojson": lambda: _stress_geojson("hydrique"),
+                          "formats": ["xlsx", "csv", "geojson"]},
+    "stress_vegetation": {"label": "Parcelles à problème de végétation (NDVI faible)",
+                          "builder": lambda: _stress_rows("vegetation"),
+                          "geojson": lambda: _stress_geojson("vegetation"),
+                          "formats": ["xlsx", "csv", "geojson"]},
+    "stress_combine":    {"label": "Parcelles cumulant les deux (hydrique + végétation)",
+                          "builder": lambda: _stress_rows("combine"),
+                          "geojson": lambda: _stress_geojson("combine"),
+                          "formats": ["xlsx", "csv", "geojson"]},
     "producteurs":   {"label": "Producteurs", "builder": _producteurs, "formats": ["xlsx", "csv"]},
     "organisations": {"label": "Organisations", "builder": _organisations, "formats": ["xlsx", "csv"]},
     "indices":       {"label": "Indices de végétation", "builder": _indices, "formats": ["xlsx", "csv"]},

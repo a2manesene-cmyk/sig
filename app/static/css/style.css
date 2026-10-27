@@ -1,65 +1,206 @@
+/* ===========================================================
+   ANCAR SIG — thème & convivialité (feuille locale)
+   =========================================================== */
 :root {
   --ancar-green: #1E5631;
   --ancar-green-2: #2E7D46;
+  --ancar-green-3: #256b3d;
   --ancar-gold: #9A7B14;
   --ancar-light: #EAF3EC;
+  --ancar-ink: #1f2a24;
+  --ancar-muted: #5b6b60;
+  --ancar-bg: #f4f7f5;
+  --ancar-border: #e3ebe5;
 }
 
+* { -webkit-font-smoothing: antialiased; }
 body {
-  background: #f5f7f5;
+  background: var(--ancar-bg);
+  color: var(--ancar-ink);
+  font-size: 15px;
+  line-height: 1.55;
 }
 
+/* ---------- Barre de navigation ---------- */
 .ancar-navbar {
-  background: var(--ancar-green);
+  background: linear-gradient(90deg, var(--ancar-green), var(--ancar-green-3));
+  position: sticky; top: 0; z-index: 1030;
+  box-shadow: 0 2px 10px rgba(0,0,0,.18);
+  padding-top: .35rem; padding-bottom: .35rem;
 }
 .ancar-navbar .navbar-brand,
 .ancar-navbar .nav-link { color: #fff !important; }
-.ancar-navbar .nav-link.disabled { color: rgba(255,255,255,.55) !important; }
-
-.ancar-badge {
-  background: var(--ancar-gold);
-  color: #fff;
-  font-weight: 500;
+.ancar-navbar .navbar-nav { flex-wrap: wrap; }      /* évite que les derniers onglets sortent de l'écran */
+.ancar-navbar .nav-link {
+  white-space: nowrap; border-radius: 8px;
+  padding: .35rem .5rem; margin: .05rem .04rem;
+  font-size: .92rem;
+  transition: background .15s ease;
 }
+.ancar-navbar .nav-link:hover { background: rgba(255,255,255,.12); }
+.ancar-navbar .nav-link.active { background: rgba(255,255,255,.18); font-weight: 600; }
+.ancar-navbar .nav-link.active::after {
+  content: ""; display: block; height: 2px; background: var(--ancar-gold);
+  border-radius: 2px; margin-top: 2px;
+}
+.ancar-navbar .nav-link.disabled { color: rgba(255,255,255,.55) !important; }
+.ancar-navbar .dropdown-menu { border: none; box-shadow: 0 8px 24px rgba(0,0,0,.15); border-radius: 10px; }
 
-.ancar-title { color: var(--ancar-green); }
+/* ---------- Titres & marque ---------- */
+.ancar-title, .page-title { color: var(--ancar-green); font-weight: 700; }
 .ancar-logo { font-size: 2.6rem; color: var(--ancar-green); }
 
-.ancar-btn {
-  background: var(--ancar-green);
-  color: #fff;
-}
-.ancar-btn:hover { background: var(--ancar-green-2); color: #fff; }
+/* ---------- Boutons (unifiés sur le vert ANCAR) ---------- */
+.btn { border-radius: 8px; }
+.ancar-btn, .btn-success { background: var(--ancar-green); border-color: var(--ancar-green); color: #fff; }
+.ancar-btn:hover, .btn-success:hover { background: var(--ancar-green-2); border-color: var(--ancar-green-2); color: #fff; }
+.btn-outline-success { color: var(--ancar-green); border-color: var(--ancar-green); }
+.btn-outline-success:hover { background: var(--ancar-green); border-color: var(--ancar-green); color: #fff; }
 
-/* Cartes statistiques */
-.stat-card {
-  border: none;
-  border-left: 4px solid var(--ancar-green);
-  box-shadow: 0 1px 4px rgba(0,0,0,.06);
-}
+/* ---------- Couleurs sémantiques alignées ---------- */
+.text-success { color: var(--ancar-green) !important; }
+.bg-success, .badge.bg-success, .progress-bar.bg-success { background-color: var(--ancar-green) !important; }
+.ancar-badge { background: var(--ancar-gold); color: #fff; font-weight: 500; }
+.badge { font-weight: 600; padding: .4em .6em; }
+
+/* ---------- Cartes ---------- */
+.card { border: none; border-radius: 14px; box-shadow: 0 1px 3px rgba(20,40,30,.08); }
+.card + .card { margin-top: 1rem; }
+.card .card-body h5, .card .card-body h6 { color: var(--ancar-green); }
+.shadow-sm { box-shadow: 0 1px 6px rgba(20,40,30,.08) !important; }
+
+/* Cartes statistiques (tableau de bord) */
+.stat-card { border: none; border-left: 4px solid var(--ancar-green);
+  box-shadow: 0 1px 6px rgba(20,40,30,.08); border-radius: 12px;
+  transition: transform .12s ease, box-shadow .12s ease; }
+.stat-card:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(20,40,30,.12); }
 .stat-icon { font-size: 1.6rem; color: var(--ancar-green-2); }
 .stat-value { font-size: 2rem; font-weight: 700; color: var(--ancar-green); line-height: 1.1; }
-.stat-label { color: #6c757d; font-size: .9rem; }
+.stat-label { color: var(--ancar-muted); font-size: .9rem; }
 
 /* Tuiles de modules */
-.module-tile {
-  background: var(--ancar-light);
-  border: 1px solid #d5e5d9;
-  border-radius: 8px;
-  padding: .75rem 1rem;
-  color: var(--ancar-green);
-  font-size: .95rem;
-}
+.module-tile { background: var(--ancar-light); border: 1px solid #d5e5d9; border-radius: 10px;
+  padding: .75rem 1rem; color: var(--ancar-green); font-size: .95rem; }
 .module-tile i { margin-right: .35rem; }
 
 /* Vignettes parcelles */
 .parcelle-card { transition: transform .12s ease, box-shadow .12s ease; }
 .parcelle-card:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(0,0,0,.12) !important; }
 
-/* Barre de navigation : pas de retour à la ligne, espacement homogène */
-.ancar-navbar .nav-link { white-space: nowrap; }
-.ancar-navbar .navbar-nav.me-auto .nav-item { margin-right: .15rem; }
-.ancar-navbar .navbar-brand { white-space: nowrap; }
-@media (min-width: 992px) {
-  .ancar-navbar .navbar-nav .nav-link { padding-left: .6rem; padding-right: .6rem; }
+/* ---------- Tableaux ---------- */
+.table { --bs-table-hover-bg: #f0f6f1; margin-bottom: 0; }
+.table thead th { background: var(--ancar-light); color: var(--ancar-green);
+  border-bottom: 2px solid #d5e5d9; font-weight: 600; }
+.table > :not(caption) > * > * { padding: .6rem .75rem; }
+.table-responsive { border-radius: 12px; }
+
+/* ---------- Formulaires ---------- */
+.form-label { font-weight: 500; color: var(--ancar-ink); }
+.form-control, .form-select { border-radius: 8px; border-color: var(--ancar-border); }
+.form-control:focus, .form-select:focus {
+  border-color: var(--ancar-green-2);
+  box-shadow: 0 0 0 .2rem rgba(30,86,49,.15);
 }
+
+/* ---------- Alertes ---------- */
+.alert { border: none; border-radius: 10px; border-left: 4px solid var(--ancar-green); }
+.alert-success { background: #eef7f0; color: #14432a; border-left-color: var(--ancar-green); }
+.alert-warning { background: #fef6e7; color: #6b4e00; border-left-color: #F39C12; }
+.alert-danger  { background: #fdecea; color: #7a1c14; border-left-color: #d73027; }
+.alert-info    { background: #e9f2fb; color: #0d3b66; border-left-color: #1565C0; }
+
+/* ---------- Liens ---------- */
+a { color: var(--ancar-green-2); }
+a:hover { color: var(--ancar-green); }
+
+/* ---------- Pied de page ---------- */
+.ancar-footer {
+  color: var(--ancar-muted); font-size: .85rem;
+  padding: 1.25rem 0; margin-top: 2rem;
+  border-top: 1px solid var(--ancar-border);
+}
+
+/* ---------- Responsive (tablette / mobile) ---------- */
+@media (min-width: 992px) {
+  .ancar-navbar .navbar-nav .nav-link { padding-left: .5rem; padding-right: .5rem; }
+}
+@media (max-width: 991.98px) {
+  .ancar-navbar .nav-link.active::after { display: none; }
+  .ancar-navbar .nav-link { margin: .1rem 0; }
+  .stat-value { font-size: 1.7rem; }
+}
+@media (max-width: 575.98px) {
+  body { font-size: 14.5px; }
+  .container, .container-fluid { padding-left: .9rem; padding-right: .9rem; }
+}
+
+/* ===========================================================
+   Disposition à menu latéral (vertical)
+   =========================================================== */
+.ancar-layout { display: flex; min-height: 100vh; }
+
+.ancar-sidebar {
+  width: 234px; flex-shrink: 0;
+  background: linear-gradient(180deg, var(--ancar-green), var(--ancar-green-3));
+  color: #fff; position: fixed; top: 0; left: 0; bottom: 0; z-index: 1040;
+  display: flex; flex-direction: column; overflow-y: auto;
+  box-shadow: 2px 0 10px rgba(0,0,0,.12);
+  transition: transform .2s ease;
+}
+.sidebar-brand {
+  display: flex; align-items: center; gap: .5rem;
+  padding: .95rem .9rem; font-weight: 700; font-size: 1.05rem;
+  color: #fff !important; text-decoration: none;
+  border-bottom: 1px solid rgba(255,255,255,.12);
+}
+.sidebar-brand img { height: 34px; background: #fff; border-radius: 6px; padding: 2px; }
+.sidebar-nav { padding: .5rem .45rem; flex: 1; }
+.sidebar-nav a {
+  display: flex; align-items: center; gap: .6rem;
+  color: #eaf3ec !important; text-decoration: none;
+  padding: .55rem .7rem; border-radius: 8px; margin: .12rem 0;
+  font-size: .94rem; white-space: nowrap; transition: background .15s ease;
+}
+.sidebar-nav a i { font-size: 1.05rem; width: 1.25rem; text-align: center; }
+.sidebar-nav a:hover { background: rgba(255,255,255,.12); color: #fff !important; }
+.sidebar-nav a.active {
+  background: rgba(255,255,255,.16); color: #fff !important; font-weight: 600;
+  box-shadow: inset 3px 0 0 var(--ancar-gold);
+}
+.sidebar-user { border-top: 1px solid rgba(255,255,255,.12); padding: .8rem .9rem; font-size: .88rem; }
+.sidebar-user .u-name { font-weight: 600; }
+.sidebar-user .u-role { color: rgba(255,255,255,.7); font-size: .8rem; margin-bottom: .1rem; }
+.sidebar-user a { color: #eaf3ec !important; text-decoration: none; }
+.sidebar-user a:hover { color: #fff !important; }
+
+.ancar-main { margin-left: 234px; flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.ancar-topbar {
+  display: flex; align-items: center; gap: .75rem;
+  padding: .55rem 1rem; background: #fff;
+  border-bottom: 1px solid var(--ancar-border);
+  position: sticky; top: 0; z-index: 1020;
+}
+.ancar-topbar .btn-burger { display: inline-block; border: none; background: transparent; font-size: 1.4rem; color: var(--ancar-green); padding: .1rem .4rem; }
+.ancar-main .container-fluid { flex: 1; }
+.ancar-backdrop { display: none; }
+
+/* Menu masqué (ordinateur) */
+.ancar-layout.sb-hidden .ancar-sidebar { transform: translateX(-100%); }
+.ancar-layout.sb-hidden .ancar-main { margin-left: 0; }
+
+/* Repli sur tablette / mobile */
+@media (max-width: 991.98px) {
+  .ancar-sidebar { transform: translateX(-100%); transition: transform .25s ease; }
+  .ancar-sidebar.open { transform: translateX(0); }
+  .ancar-main { margin-left: 0; }
+  .ancar-topbar .btn-burger { display: inline-block; }
+  .ancar-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 1035; }
+  .ancar-backdrop.show { display: block; }
+}
+
+.sidebar-section {
+  color: rgba(255,255,255,.55);
+  font-size: .72rem; text-transform: uppercase; letter-spacing: .05em;
+  font-weight: 700; padding: .75rem .75rem .2rem; margin-top: .25rem;
+}
+.sidebar-nav a:first-of-type { margin-bottom: .1rem; }

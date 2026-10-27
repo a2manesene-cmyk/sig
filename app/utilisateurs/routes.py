@@ -78,6 +78,18 @@ def reset():
     from app.models.producteur import Producteur
     from app.models.indice import IndiceVegetation
     from app.models.historique import HistoriqueCultural
+    try:
+        from app.models.financement import FinancementOP
+    except Exception:
+        FinancementOP = None
+    try:
+        from app.models.suivi import SuiviTerrain
+    except Exception:
+        SuiviTerrain = None
+    try:
+        from app.models.rendement import RendementReference
+    except Exception:
+        RendementReference = None
 
     if not request.form.get("confirmer"):
         flash("Veuillez cocher la case de confirmation.", "warning")
@@ -89,6 +101,10 @@ def reset():
     def purge_parcelles():
         faits.append(("Indices", db.session.query(IndiceVegetation).delete()))
         faits.append(("Historique", db.session.query(HistoriqueCultural).delete()))
+        if SuiviTerrain is not None:
+            faits.append(("Suivi terrain", db.session.query(SuiviTerrain).delete()))
+        if RendementReference is not None:
+            faits.append(("Rendements réf.", db.session.query(RendementReference).delete()))
         faits.append(("Parcelles", db.session.query(Parcelle).delete()))
 
     if cible == "indices":
@@ -105,6 +121,8 @@ def reset():
             {User.organisation_id: None}, synchronize_session=False)
         purge_parcelles()
         faits.append(("Producteurs", db.session.query(Producteur).delete()))
+        if FinancementOP is not None:   # référence les organisations -> à purger avant
+            faits.append(("Financements", db.session.query(FinancementOP).delete()))
         faits.append(("Organisations", db.session.query(OrganisationProducteur).delete()))
     else:
         flash("Cible de réinitialisation inconnue.", "warning")

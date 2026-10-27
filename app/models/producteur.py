@@ -9,6 +9,7 @@ class Producteur(db.Model):
     nom = db.Column(db.String(80), nullable=False)
     telephone = db.Column(db.String(30))
     sexe = db.Column(db.String(1))   # H / F
+    langue = db.Column(db.String(5))  # fr / wo / ff … (préférence de communication)
 
     organisation_id = db.Column(db.Integer, db.ForeignKey("organisations_producteurs.id"))
     organisation = db.relationship("OrganisationProducteur", back_populates="producteurs")

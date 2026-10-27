@@ -10,7 +10,15 @@
   <h3 class="ancar-title mb-0"><i class="bi bi-exclamation-triangle text-danger"></i> Alertes — stress hydrique
     <span class="badge bg-danger">{{ lignes|length }}</span>
   </h3>
-  <a href="{{ url_for('alertes.export_xlsx', ndvi=s_ndvi, ndmi=s_ndmi, region=region_id or '') }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-file-earmark-excel"></i> Export Excel</a>
+  <div class="d-flex gap-2">
+    <a href="{{ url_for('alertes.export_xlsx', ndvi=s_ndvi, ndmi=s_ndmi, region=region_id or '') }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-file-earmark-excel"></i> Export Excel</a>
+    {% if current_user.niveau >= 2 and wa and wa.producteurs %}
+    <form method="POST" action="{{ url_for('alertes.whatsapp') }}"
+          onsubmit="return confirm('Envoyer une alerte vocale WhatsApp à {{ wa.producteurs }} producteur(s) ?');">
+      <button class="btn btn-success btn-sm"><i class="bi bi-whatsapp"></i> Alerter par WhatsApp (audio) — {{ wa.producteurs }}</button>
+    </form>
+    {% endif %}
+  </div>
 </div>
 
 <form method="GET" class="card border-0 shadow-sm mb-3"><div class="card-body">

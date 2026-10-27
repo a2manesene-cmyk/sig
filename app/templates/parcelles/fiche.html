@@ -109,20 +109,188 @@
   </div>
 </div>
 
+{% if rdt_evolution %}
+<div class="card border-0 shadow-sm mt-3"><div class="card-body">
+  <h6 class="mb-2"><i class="bi bi-graph-up-arrow text-success"></i> Évolution du rendement (kg/ha)</h6>
+  <canvas id="chartRdt" height="90"></canvas>
+</div></div>
+{% endif %}
+
 <div class="card border-0 shadow-sm mt-3"><div class="card-body">
   <div class="d-flex justify-content-between align-items-center mb-2">
     <h6 class="mb-0"><i class="bi bi-images text-success"></i> Évolution de la parcelle en vraies couleurs — 4 étapes depuis le 15 mai</h6>
     <button id="btnEvol" class="btn btn-outline-success btn-sm"><i class="bi bi-play-circle"></i> Charger l'évolution</button>
   </div>
+  <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+    <span class="small text-muted">Carte annotée (état actuel) à télécharger :</span>
+    <select id="dlIndice" class="form-select form-select-sm" style="width:auto">
+      <option value="rgb">Vraies couleurs (RGB)</option>
+      <option value="ndvi">Santé des cultures (NDVI)</option>
+      <option value="ndmi">Stress hydrique (NDMI)</option>
+    </select>
+    <a id="dlPeriode" class="btn btn-success btn-sm"
+       href="{{ url_for('parcelles.carte_image', pid=p.id) }}?indice=rgb&d1={{ dl_d1 }}&d2={{ dl_d2 }}">
+      <i class="bi bi-download"></i> Télécharger (dernière période : {{ dl_d1 }} → {{ dl_d2 }})
+    </a>
+  </div>
   <div id="evolMsg" class="text-muted small mb-2">Cliquez pour afficher l'image satellite réelle de la parcelle à 4 périodes (montre la variabilité et l'évolution du couvert).</div>
   <div class="fw-semibold small mb-1">Vraies couleurs (RGB)</div>
   <div id="evolGrid" class="row g-2"></div>
   <div class="fw-semibold small mt-3 mb-1">Humidité (NDMI)
-    <span class="ms-2 small text-muted align-middle">Sec
-      <span style="display:inline-block;width:90px;height:11px;border:1px solid #999;vertical-align:middle;background:linear-gradient(to right,#ffffff,#1565C0)"></span>
-      Humide</span>
+    <span class="ms-2 small text-muted align-middle">
+      <span style="display:inline-block;width:11px;height:11px;background:#deebf7;border:1px solid #999"></span> Sévère
+      <span style="display:inline-block;width:11px;height:11px;background:#9ecae1;border:1px solid #999"></span> Modéré
+      <span style="display:inline-block;width:11px;height:11px;background:#6baed6;border:1px solid #999"></span> Interm.
+      <span style="display:inline-block;width:11px;height:11px;background:#3182bd;border:1px solid #999"></span> Élevée
+      <span style="display:inline-block;width:11px;height:11px;background:#08519c;border:1px solid #999"></span> Très humide
+    </span>
   </div>
   <div id="evolGridNdmi" class="row g-2"></div>
+</div></div>
+
+<div class="card border-0 shadow-sm mt-3" id="potentiel"><div class="card-body">
+  <h6 class="mb-2"><i class="bi bi-bar-chart-line text-success"></i> Rendement potentiel (variété)</h6>
+  <p class="small text-muted mb-2">Potentiel de la variété <b>Mastrop</b> (estimé entre 4 et 5 t/ha). Valeur modulable par parcelle ; elle sert de référence tant qu'aucun rendement réel n'est saisi.</p>
+  <div class="d-flex align-items-center flex-wrap gap-2">
+    <span class="fs-5 fw-semibold">{{ (p.rendement_potentiel|int ~ ' kg/ha') if p.rendement_potentiel else '— (non défini)' }}</span>
+    {% if current_user.niveau >= 2 %}
+    <form method="post" action="{{ url_for('parcelles.enregistrer_potentiel', pid=p.id) }}" class="d-flex align-items-center gap-2 ms-auto">
+      <input type="number" step="1" min="0" name="rendement_potentiel" class="form-control form-control-sm" style="width:130px"
+             value="{{ p.rendement_potentiel|int if p.rendement_potentiel else 4500 }}">
+      <span class="small text-muted">kg/ha</span>
+      <button class="btn btn-success btn-sm"><i class="bi bi-save"></i> Enregistrer</button>
+    </form>
+    {% endif %}
+  </div>
+</div></div>
+
+<div class="card border-0 shadow-sm mt-3" id="sol"><div class="card-body">
+  <h6 class="mb-3"><i class="bi bi-moisture text-success"></i> Qualité du sol</h6>
+  {% set fcol = {'Bonne':'success','Moyenne':'warning','Faible':'danger'} %}
+  <div class="row g-3">
+    <div class="col-md-5">
+      {% if p.sol_fertilite or p.sol_type or p.sol_ph or p.sol_mo %}
+      <ul class="list-unstyled small mb-0">
+        <li><b>Fertilité :</b>
+          {% if p.sol_fertilite %}<span class="badge bg-{{ fcol.get(p.sol_fertilite,'secondary') }}">{{ p.sol_fertilite }}</span>{% else %}—{% endif %}</li>
+        <li><b>Type / texture :</b> {{ p.sol_type or '—' }}</li>
+        <li><b>pH :</b> {{ p.sol_ph if p.sol_ph is not none else '—' }}</li>
+        <li><b>Matière organique :</b> {{ (p.sol_mo ~ ' %') if p.sol_mo is not none else '—' }}</li>
+        <li><b>Source :</b> {{ p.sol_source or '—' }}</li>
+        {% if p.sol_note %}<li><b>Note :</b> {{ p.sol_note }}</li>{% endif %}
+      </ul>
+      {% else %}
+      <p class="text-muted small mb-0">Aucune donnée de sol renseignée.</p>
+      {% endif %}
+    </div>
+    {% if current_user.niveau >= 2 %}
+    <div class="col-md-7">
+      <form method="post" action="{{ url_for('parcelles.enregistrer_sol', pid=p.id) }}" class="row g-2">
+        <div class="col-6">
+          <label class="form-label small mb-0">Fertilité</label>
+          <select name="sol_fertilite" class="form-select form-select-sm">
+            <option value="">—</option>
+            {% for o in ['Faible','Moyenne','Bonne'] %}<option {{ 'selected' if p.sol_fertilite==o }}>{{ o }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="col-6">
+          <label class="form-label small mb-0">Type / texture</label>
+          <input name="sol_type" value="{{ p.sol_type or '' }}" class="form-control form-control-sm" placeholder="Sablo-argileux…">
+        </div>
+        <div class="col-4">
+          <label class="form-label small mb-0">pH</label>
+          <input name="sol_ph" value="{{ p.sol_ph if p.sol_ph is not none else '' }}" class="form-control form-control-sm" placeholder="6.5">
+        </div>
+        <div class="col-4">
+          <label class="form-label small mb-0">M.O. (%)</label>
+          <input name="sol_mo" value="{{ p.sol_mo if p.sol_mo is not none else '' }}" class="form-control form-control-sm" placeholder="1.2">
+        </div>
+        <div class="col-4">
+          <label class="form-label small mb-0">Source</label>
+          <select name="sol_source" class="form-select form-select-sm">
+            <option value="">—</option>
+            {% for o in ['Analyse labo','Carte pédologique','Terrain'] %}<option {{ 'selected' if p.sol_source==o }}>{{ o }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="col-12">
+          <label class="form-label small mb-0">Note</label>
+          <textarea name="sol_note" rows="1" class="form-control form-control-sm" placeholder="Observation…">{{ p.sol_note or '' }}</textarea>
+        </div>
+        <div class="col-12"><button class="btn btn-success btn-sm"><i class="bi bi-save"></i> Enregistrer le sol</button></div>
+      </form>
+    </div>
+    {% endif %}
+  </div>
+</div></div>
+
+<div class="card border-0 shadow-sm mt-3" id="suivi"><div class="card-body">
+  <h6 class="mb-3"><i class="bi bi-clipboard-check text-success"></i> Suivi de terrain (animateur / CAR)</h6>
+
+  {% if current_user.niveau >= 2 %}
+  <form method="post" action="{{ url_for('parcelles.enregistrer_suivi', pid=p.id) }}" class="row g-2 mb-3">
+    <div class="col-md-3">
+      <label class="form-label small mb-0">Date</label>
+      <input type="date" name="date_obs" class="form-control form-control-sm" value="{{ aujourdhui or '' }}">
+    </div>
+    <div class="col-md-3">
+      <label class="form-label small mb-0">Campagne</label>
+      <select name="campagne_id" class="form-select form-select-sm">
+        <option value="">—</option>
+        {% for c in campagnes_suivi %}<option value="{{ c.id }}" {{ 'selected' if c.active }}>{{ c.libelle }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label small mb-0">Phase de croissance</label>
+      <select name="phase" class="form-select form-select-sm">
+        <option value="">—</option>
+        {% for ph in ['Levée','Croissance végétative','Montaison','Floraison','Formation des épis','Maturation','Récolte'] %}
+        <option>{{ ph }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label small mb-0">Tendance actuelle</label>
+      <select name="tendance" class="form-select form-select-sm">
+        <option value="">—</option>
+        <option>Amélioration</option><option>Stable</option><option>Dégradation</option>
+      </select>
+    </div>
+    <div class="col-md-6">
+      <label class="form-label small mb-0">Actions en cours</label>
+      <textarea name="actions" rows="2" class="form-control form-control-sm" placeholder="Semis, sarclage, traitement, irrigation…"></textarea>
+    </div>
+    <div class="col-md-6">
+      <label class="form-label small mb-0">Difficultés rencontrées par le producteur</label>
+      <textarea name="difficultes" rows="2" class="form-control form-control-sm" placeholder="Manque d'intrants, ravageurs, déficit hydrique…"></textarea>
+    </div>
+    <div class="col-12">
+      <button class="btn btn-success btn-sm"><i class="bi bi-save"></i> Enregistrer l'observation</button>
+    </div>
+  </form>
+  {% endif %}
+
+  {% if suivis %}
+    <div class="timeline">
+    {% for s in suivis %}
+      <div class="border-start border-3 ps-3 pb-3 mb-2" style="border-color:#1E5631 !important">
+        <div class="d-flex justify-content-between">
+          <span class="fw-semibold">{{ s.date_obs.strftime('%d/%m/%Y') if s.date_obs else '—' }}
+            {% if s.phase %}· <span class="text-success">{{ s.phase }}</span>{% endif %}</span>
+          {% if s.tendance %}
+            <span class="badge bg-{{ 'success' if s.tendance=='Amélioration' else ('warning' if s.tendance=='Stable' else 'danger') }}">{{ s.tendance }}</span>
+          {% endif %}
+        </div>
+        {% if s.actions %}<div class="small mt-1"><b>Actions :</b> {{ s.actions }}</div>{% endif %}
+        {% if s.difficultes %}<div class="small"><b>Difficultés :</b> {{ s.difficultes }}</div>{% endif %}
+        <div class="small text-muted mt-1">
+          {% if s.auteur %}<i class="bi bi-person"></i> {{ s.auteur.nom }}{% endif %}
+          {% if s.campagne %} · {{ s.campagne.libelle }}{% endif %}
+        </div>
+      </div>
+    {% endfor %}
+    </div>
+  {% else %}
+    <p class="text-muted small mb-0">Aucune observation de terrain pour l'instant.</p>
+  {% endif %}
 </div></div>
 {% endblock %}
 
@@ -163,9 +331,30 @@ new Chart(document.getElementById('chartIndices'), {
 });
 {% endif %}
 
+{% if rdt_evolution %}
+if (window.Chart) {
+  const _rdt = {{ rdt_evolution|tojson }};
+  new Chart(document.getElementById('chartRdt'), {
+    type: 'line',
+    data: { labels: _rdt.map(x => x.annee),
+      datasets: [{ label: 'Rendement (kg/ha)', data: _rdt.map(x => x.rendement),
+        borderColor: '#1E5631', backgroundColor: '#1E5631', tension: 0.3, pointRadius: 4 }] },
+    options: { plugins: { legend: { display: false } },
+      scales: { y: { beginAtZero: true, title: { display: true, text: 'kg/ha' } } } }
+  });
+}
+{% endif %}
+
 // --- Évolution en 4 étapes (RGB) ---
 (function () {
   const btn = document.getElementById('btnEvol');
+  const _dlSel = document.getElementById('dlIndice');
+  const _dlBtn = document.getElementById('dlPeriode');
+  if (_dlSel && _dlBtn) {
+    _dlSel.addEventListener('change', function () {
+      _dlBtn.href = _dlBtn.href.replace(/indice=[a-z]+/, 'indice=' + this.value);
+    });
+  }
   const grid = document.getElementById('evolGrid');
   const msg = document.getElementById('evolMsg');
   if (!btn) return;
@@ -185,11 +374,14 @@ new Chart(document.getElementById('chartIndices'), {
         d.stages.forEach((st, i) => {
           const col = document.createElement('div');
           col.className = "col-6 col-md-3";
+          const dlEtape = "{{ url_for('parcelles.carte_image', pid=p.id) }}?indice="
+            + document.getElementById('dlIndice').value + "&d1=" + st.d1 + "&d2=" + st.d2;
           col.innerHTML =
             '<div class="border rounded p-1">' +
             '<div class="small fw-semibold text-center mb-1">Étape ' + (i + 1) + ' · ' + st.label + '</div>' +
             '<div id="evol' + i + '" style="height:150px;border-radius:4px;background:#eee"></div>' +
-            (st.url ? '' : '<div class="small text-muted text-center mt-1">Pas d\'image (nuages)</div>') +
+            (st.url ? '<div class="text-center mt-1"><a class="small" href="' + dlEtape + '"><i class="bi bi-download"></i> Télécharger</a></div>'
+                    : '<div class="small text-muted text-center mt-1">Pas d\'image (nuages)</div>') +
             '</div>';
           grid.appendChild(col);
           const m = L.map('evol' + i, { zoomControl: false, attributionControl: false,
@@ -207,7 +399,10 @@ new Chart(document.getElementById('chartIndices'), {
               '<div class="border rounded p-1">' +
               '<div class="small fw-semibold text-center mb-1">Étape ' + (i + 1) + ' · ' + st.label + '</div>' +
               '<div id="evoln' + i + '" style="height:150px;border-radius:4px;background:#eee"></div>' +
-              (st.ndmi_url ? '' : '<div class="small text-muted text-center mt-1">Pas d\'image (nuages)</div>') +
+              (st.ndmi_url ? '<div class="text-center mt-1"><a class="small" href="' +
+                  "{{ url_for('parcelles.carte_image', pid=p.id) }}?indice=ndmi&d1=" + st.d1 + "&d2=" + st.d2 +
+                  '"><i class="bi bi-download"></i> Télécharger</a></div>'
+                : '<div class="small text-muted text-center mt-1">Pas d\'image (nuages)</div>') +
               '</div>';
             gridNdmi.appendChild(colN);
             const mn = L.map('evoln' + i, { zoomControl: false, attributionControl: false,

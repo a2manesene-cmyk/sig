@@ -14,23 +14,16 @@
 </div>
 
 <div class="card border-0 shadow-sm mb-3"><div class="card-body">
-  <h6 class="text-muted text-uppercase small mb-2">Modèles de calibration (kg/ha)</h6>
-  {% if modeles %}
-  <table class="table table-sm mb-0" style="max-width:640px">
-    <thead class="table-light"><tr><th>Culture</th><th>Points</th><th>Qualité (R²)</th><th>Relation</th></tr></thead>
-    <tbody>
-    {% for cul, m in modeles.items() %}
-      <tr><td>{{ cul }}</td><td>{{ m.n }}</td>
-        <td><span class="badge bg-{{ 'success' if m.r2>=0.6 else ('warning' if m.r2>=0.3 else 'secondary') }}">{{ '%.2f'|format(m.r2) }}</span></td>
-        <td class="small text-muted">rdt ≈ {{ '%.0f'|format(m.a) }}·NDVI + {{ '%.0f'|format(m.b) }}</td></tr>
-    {% endfor %}
-    </tbody>
-  </table>
-  <div class="form-text mt-1">Ces relations sont recalculées à chaque nouvelle saisie de rendement réel.</div>
-  {% else %}
-  <p class="text-muted small mb-0">Aucun modèle kg/ha pour l'instant : il faut au moins <b>{{ min_points }}</b> rendements réels par culture (avec NDVI calculé). En attendant, l'<b>indice de potentiel (0–100)</b> reste disponible ci-dessous.</p>
-  {% endif %}
+  <h6 class="text-muted text-uppercase small mb-2">Méthode d'estimation</h6>
+  <p class="small mb-1"><b>Rendement estimé = (indice de potentialité ÷ 100) × rendement potentiel de la parcelle.</b></p>
+  <p class="form-text mb-0">L'indice de potentialité (0–100) traduit l'état satellite (NDVI) de la parcelle ; le rendement potentiel est celui de la variété (Mastrop, 4–5 t/ha), modulable par parcelle. L'estimé devient une vraie mesure dès qu'un rendement réel est saisi.</p>
 </div></div>
+
+{% if dapsa_present %}
+<div class="alert alert-warning py-2 small mb-3"><i class="bi bi-info-circle"></i>
+  <b>Valeurs indicatives.</b> Les rendements affichés correspondent au <b>potentiel de la variété (Mastrop, 4–5 t/ha)</b>, modulable par parcelle, et non à des mesures réelles. Ils deviendront précis une fois des <b>rendements réels</b> saisis.
+</div>
+{% endif %}
 
 <form method="GET" class="mb-3">
   <div class="d-flex gap-2 align-items-end">
@@ -46,7 +39,7 @@
 <table class="table table-hover mb-0 align-middle">
   <thead class="table-light"><tr>
     <th>Parcelle</th><th>Culture</th><th>Commune</th><th>Relevés</th>
-    <th>Pic NDVI</th><th>Potentiel (0–100)</th><th>Rendement estimé</th></tr></thead>
+    <th>Pic NDVI</th><th>Potentiel (0–100)</th><th>Fertilité sol</th><th>Rendement estimé</th><th>Source réf.</th></tr></thead>
   <tbody>
   {% for v in vues %}
     <tr>
@@ -64,10 +57,21 @@
         </div>
         {% else %}—{% endif %}
       </td>
+      <td>
+        {% set fcol = {'Bonne':'success','Moyenne':'warning','Faible':'danger'} %}
+        {% if v.p.sol_fertilite %}<span class="badge bg-{{ fcol.get(v.p.sol_fertilite,'secondary') }}">{{ v.p.sol_fertilite }}</span>{% else %}<span class="text-muted">—</span>{% endif %}
+      </td>
       <td>{% if v.estimation is not none %}<b>{{ '{:,}'.format(v.estimation).replace(',', ' ') }}</b> kg/ha{% else %}<span class="text-muted small">n/d</span>{% endif %}</td>
+      <td>
+        {% if v.source %}
+          {% if 'terrain' in v.source|lower %}<span class="badge bg-success">Terrain</span>
+          {% elif 'DAPSA' in v.source %}<span class="badge bg-secondary">DAPSA</span>
+          {% else %}<span class="badge bg-info text-dark">Potentiel</span>{% endif %}
+        {% else %}<span class="text-muted">—</span>{% endif %}
+      </td>
     </tr>
   {% else %}
-    <tr><td colspan="7" class="text-center text-muted py-4">Aucune parcelle avec relevé NDVI. Lancez d'abord des calculs d'indices (Télédétection).</td></tr>
+    <tr><td colspan="9" class="text-center text-muted py-4">Aucune parcelle avec relevé NDVI. Lancez d'abord des calculs d'indices (Télédétection).</td></tr>
   {% endfor %}
   </tbody>
 </table>

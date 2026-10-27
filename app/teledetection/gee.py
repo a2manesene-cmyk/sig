@@ -79,7 +79,8 @@ def _add_indices(img):
         .divide(N.add(R.multiply(6)).subtract(B.multiply(7.5)).add(1))
         .rename("evi")
     )
-    return ee.Image.cat([ndvi, ndwi, ndmi, savi, evi])
+    return ee.Image.cat([ndvi, ndwi, ndmi, savi, evi]).set(
+        "system:time_start", img.get("system:time_start"))
 
 
 def rgb_tiles(features, d1, d2, project, cloud_max=80):
@@ -127,17 +128,16 @@ def index_tiles(features, d1, d2, project, indice="ndvi", cloud_max=80):
         band = img.normalizedDifference(["B8", "B4"])
     band = band.clipToCollection(fc)
     if indice == "ndmi":
-        # Humidité : blanc (sec) -> bleu (humide)
-        vis = {"min": -0.10, "max": 0.40, "palette": ["ffffff", "1565C0"]}
+        # Stress hydrique -> humidité : blanc(bleu très clair) -> bleu foncé (5 classes)
+        vis = {"min": -0.10, "max": 0.40,
+               "palette": ["deebf7", "9ecae1", "6baed6", "3182bd", "08519c"]}
     elif indice == "ndwi":
         # Eau : blanc (absence) -> bleu (présence)
         vis = {"min": -0.30, "max": 0.50, "palette": ["ffffff", "1565C0"]}
     else:
-        vis = {
-            "min": -0.2, "max": 0.8,
-            "palette": ["a50026", "d73027", "fdae61", "ffffbf",
-                        "a6d96a", "1a9850", "006837"],
-        }
+        # Santé végétation (NDVI) : rouge -> orange -> jaune -> vert clair -> vert foncé
+        vis = {"min": 0.05, "max": 0.65,
+               "palette": ["d73027", "F39C12", "F4D03F", "a6d96a", "1a9850"]}
     return band.getMapId(vis)["tile_fetcher"].url_format
 
 
@@ -224,29 +224,28 @@ def compute_indices(features, date_start, date_end, project,
 
 
 def compute_timeseries(features, date_start, date_end, project,
-                       cloud_max=80, chunk=100):
-    """
-    Évolution des indices À CHAQUE PASSAGE du satellite (une valeur par date
-    d'acquisition), entre date_start et date_end.
-    Retourne : liste de {"pid", "date":"YYYY-MM-DD", "ndvi","ndwi","ndmi","savi","evi"}.
-    """
+                       cloud_max=80, chunk=40):
+    """Evolution des indices a chaque passage. Decoupage adaptatif (<5000 elements/requete)."""
     ee = _ee()
     init_ee(project)
-
     resultats = []
-    total_images = 0
-    for i in range(0, len(features), chunk):
-        lot = features[i:i + chunk]
+    compteur = {"images": 0}
+
+    def _traiter(lot):
+        if not lot:
+            return
         fc = ee.FeatureCollection([
-            ee.Feature(ee.Geometry(f["geometry"]), {"pid": f["id"]})
-            for f in lot
+            ee.Feature(ee.Geometry(f["geometry"]), {"pid": f["id"]}) for f in lot
         ])
         col, base = _collection(date_start, date_end, fc.geometry(), cloud_max)
-        n = base.size().getInfo()
-        total_images += n
+        try:
+            n = base.size().getInfo()
+        except Exception:
+            n = 1
         if n == 0:
-            continue
-        col = col.map(_add_indices)
+            return
+        compteur["images"] += n
+        col2 = col.map(_add_indices)
 
         def _par_image(img):
             d = img.date().format("YYYY-MM-dd")
@@ -254,20 +253,53 @@ def compute_timeseries(features, date_start, date_end, project,
                    .reduceRegions(collection=fc, reducer=ee.Reducer.mean(), scale=10))
             return fc2.map(lambda f: f.set("date", d))
 
-        fcres = ee.FeatureCollection(col.map(_par_image)).flatten()
-        for feat in fcres.getInfo()["features"]:
-            p = feat["properties"]
-            if p.get("ndvi") is None:
+        fcres = ee.FeatureCollection(col2.map(_par_image)).flatten()
+        try:
+            data = fcres.getInfo()["features"]
+        except Exception as exc:
+            msg = str(exc)
+            if ("5000" in msg or "aborted" in msg.lower()) and len(lot) > 1:
+                mid = len(lot) // 2
+                _traiter(lot[:mid]); _traiter(lot[mid:]); return
+            raise
+        for feat in data:
+            pr = feat["properties"]
+            if pr.get("ndvi") is None:
                 continue
             resultats.append({
-                "pid": p.get("pid"), "date": p.get("date"),
-                "ndvi": p.get("ndvi"), "ndwi": p.get("ndwi"),
-                "ndmi": p.get("ndmi"), "savi": p.get("savi"), "evi": p.get("evi"),
+                "pid": pr.get("pid"), "date": pr.get("date"),
+                "ndvi": pr.get("ndvi"), "ndwi": pr.get("ndwi"),
+                "ndmi": pr.get("ndmi"), "savi": pr.get("savi"), "evi": pr.get("evi"),
             })
 
-    if total_images == 0:
-        raise RuntimeError(
-            "Aucune image Sentinel-2 sur cette période/périmètre. "
-            "Élargissez la fenêtre de dates."
-        )
+    for i in range(0, len(features), chunk):
+        _traiter(features[i:i + chunk])
+
+    if compteur["images"] == 0:
+        raise RuntimeError("Aucune image Sentinel-2 sur cette periode/perimetre. Elargissez la fenetre de dates.")
     return resultats
+
+
+def thumb_url(features, d1, d2, project, indice="rgb", dimensions=1000, cloud_max=80):
+    """URL d'une image PNG (Earth Engine) de la parcelle : RGB, NDVI ou NDMI (composite médian)."""
+    ee = _ee()
+    init_ee(project)
+    fc = ee.FeatureCollection([ee.Feature(ee.Geometry(f["geometry"])) for f in features])
+    region = fc.geometry()
+    col, base = _collection(d1, d2, region.bounds(), cloud_max)
+    if base.size().getInfo() == 0:
+        raise RuntimeError("Aucune image Sentinel-2 sur cette période/périmètre.")
+    img = col.median()
+    if indice == "ndmi":
+        b = img.normalizedDifference(["B8", "B11"])
+        vis = b.visualize(min=-0.10, max=0.40,
+                          palette=["deebf7", "9ecae1", "6baed6", "3182bd", "08519c"])
+    elif indice == "ndvi":
+        b = img.normalizedDifference(["B8", "B4"])
+        vis = b.visualize(min=0.05, max=0.65,
+                          palette=["d73027", "F39C12", "F4D03F", "a6d96a", "1a9850"])
+    else:  # rgb
+        vis = img.select(["B4", "B3", "B2"]).visualize(min=0, max=3000)
+    vis = vis.clipToCollection(fc)
+    coords = region.bounds().getInfo()["coordinates"]
+    return vis.getThumbURL({"region": coords, "dimensions": dimensions, "format": "png"})

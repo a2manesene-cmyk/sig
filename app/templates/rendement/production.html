@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Production attendue — ANCAR SIG{% endblock %}
+{% block content %}
+<h4 class="mb-1"><i class="bi bi-box-seam text-success"></i> Production attendue (commercialisation)</h4>
+<p class="text-muted small">Production = rendement attendu × superficie. Rendement issu des références (potentiel variété / terrain), complété par l'estimation satellite.</p>
+
+<div class="row g-3 mb-3">
+  <div class="col-6 col-lg-3"><div class="card stat-card h-100"><div class="card-body">
+    <div class="stat-icon"><i class="bi bi-box-seam"></i></div>
+    <div class="stat-value">{{ "{:,.1f}".format(total.production_t).replace(",", " ") }}</div>
+    <div class="stat-label">Production totale attendue (tonnes)</div>
+  </div></div></div>
+  <div class="col-6 col-lg-3"><div class="card stat-card h-100"><div class="card-body">
+    <div class="stat-icon"><i class="bi bi-rulers"></i></div>
+    <div class="stat-value">{{ "{:,.1f}".format(total.superficie).replace(",", " ") }}</div>
+    <div class="stat-label">Superficie totale (ha)</div>
+  </div></div></div>
+  <div class="col-6 col-lg-3"><div class="card stat-card h-100"><div class="card-body">
+    <div class="stat-icon"><i class="bi bi-bar-chart-line"></i></div>
+    <div class="stat-value">{{ "{:,}".format(total.rendement).replace(",", " ") }}</div>
+    <div class="stat-label">Rendement moyen (kg/ha)</div>
+  </div></div></div>
+  <div class="col-6 col-lg-3"><div class="card stat-card h-100"><div class="card-body">
+    <div class="stat-icon"><i class="bi bi-map"></i></div>
+    <div class="stat-value">{{ total.nb }}</div>
+    <div class="stat-label">Parcelles prises en compte</div>
+  </div></div></div>
+</div>
+
+{% macro bloc(titre, icone, rows) %}
+<div class="col-lg-6"><div class="card border-0 shadow-sm h-100"><div class="card-body p-0">
+  <h6 class="text-muted text-uppercase small m-3 mb-2"><i class="bi {{ icone }}"></i> {{ titre }}</h6>
+  <div class="table-responsive" style="max-height:320px;overflow:auto">
+  <table class="table table-sm table-hover align-middle mb-0">
+    <thead class="table-light"><tr><th>{{ titre }}</th><th class="text-end">Prod. (t)</th><th class="text-end">Sup. (ha)</th><th class="text-end">Rdt (kg/ha)</th><th class="text-end">Parc.</th></tr></thead>
+    <tbody>
+      {% for r in rows %}
+      <tr><td>{{ r.cle }}</td>
+        <td class="text-end fw-semibold">{{ "{:,.1f}".format(r.production_t).replace(",", " ") }}</td>
+        <td class="text-end">{{ "{:,.1f}".format(r.superficie).replace(",", " ") }}</td>
+        <td class="text-end">{{ "{:,}".format(r.rendement).replace(",", " ") }}</td>
+        <td class="text-end">{{ r.nb }}</td></tr>
+      {% else %}<tr><td colspan="5" class="text-center text-muted py-3">Aucune donnée.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div></div></div>
+{% endmacro %}
+
+<div class="row g-3">
+  {{ bloc("Département", "bi-geo-alt", par_departement) }}
+  {{ bloc("OP (organisation)", "bi-diagram-3", par_op) }}
+  {{ bloc("Zone ANCAR", "bi-pin-map", par_zone) }}
+  {{ bloc("Commune", "bi-signpost", par_commune) }}
+</div>
+
+<p class="text-muted small mt-3"><i class="bi bi-info-circle"></i> Les volumes reposent sur le potentiel de la variété (Mastrop, 4–5 t/ha), modulable par parcelle ; ils affineront à mesure que des rendements réels seront saisis.</p>
+{% endblock %}

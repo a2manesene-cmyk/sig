@@ -13,6 +13,7 @@
     {% if current_user.niveau >= 2 %}
     <a href="{{ url_for('parcelles.importer') }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-upload"></i> Importer</a>
     <a href="{{ url_for('parcelles.import_historique') }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-clock-history"></i> Historique</a>
+    <a href="{{ url_for('parcelles.import_geo') }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-geo-alt"></i> Localisation</a>
     <a href="{{ url_for('parcelles.creer') }}" class="btn ancar-btn btn-sm"><i class="bi bi-plus-lg"></i> Nouvelle</a>
     {% endif %}
   </div>
@@ -45,11 +46,18 @@
         {% for c in campagnes %}<option value="{{ c.id }}" {{ 'selected' if campagne_id == c.id }}>{{ c.libelle }}</option>{% endfor %}
       </select>
     </div>
+    <div class="col-md-2">
+      <label class="form-label small mb-1">Programme</label>
+      <select name="programme" class="form-select">
+        <option value="">Tous</option>
+        {% for pr in programmes %}<option value="{{ pr.id }}" {{ 'selected' if programme_id == pr.id }}>{{ pr.nom }}</option>{% endfor %}
+      </select>
+    </div>
     <div class="col-md-1 d-grid">
       <button class="btn ancar-btn btn-sm"><i class="bi bi-search"></i></button>
     </div>
   </div>
-  {% if q or culture or region_id or campagne_id %}
+  {% if q or culture or region_id or campagne_id or programme_id or request.args.get("organisation") or request.args.get("etat") or request.args.get("hydrique") %}
   <div class="mt-2"><a href="{{ url_for('parcelles.liste') }}" class="small">Réinitialiser les filtres</a></div>
   {% endif %}
 </div></form>

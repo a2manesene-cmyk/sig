@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Bancabilité par OP — ANCAR SIG{% endblock %}
+{% block content %}
+{% if ctx and ctx.indicatif %}
+<div class="alert alert-warning py-2 small"><i class="bi bi-info-circle"></i> <b>Score indicatif.</b> Les scores se ressemblent car ils reposent sur une seule campagne{% if ctx.dapsa %} et sur le <b>potentiel de la variété</b> (Mastrop, 4–5 t/ha){% endif %}. Ils se différencieront avec des <b>rendements réels sur plusieurs campagnes</b> et le <b>NDVI calculé</b>.</div>
+{% endif %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="mb-0"><i class="bi bi-bank text-success"></i> Bancabilité par OP</h4>
+  <a href="{{ url_for('bancabilite.liste') }}" class="btn btn-outline-success btn-sm"><i class="bi bi-person"></i> Par producteur</a>
+</div>
+<p class="text-muted small">Indice interne (0–100) de solidité de l'OP, intégrant rendement, structuration, santé des cultures et <b>historique de financement (La Banque Agricole)</b>. Usage interne ANCAR — un score faible peut refléter un aléa climatique.</p>
+
+<div class="card border-0 shadow-sm"><div class="card-body p-0"><div class="table-responsive">
+<table class="table table-hover align-middle mb-0">
+  <thead class="table-light"><tr>
+    <th>OP</th><th class="text-center">Score</th><th>Classe</th>
+    <th class="text-end">Rdt moyen</th><th class="text-end">Producteurs</th><th class="text-end">Parcelles</th>
+    <th class="text-end">Financement accordé</th><th>Composantes</th>
+  </tr></thead>
+  <tbody>
+  {% for l in lignes %}
+    {% set s = l.s %}
+    <tr>
+      <td class="fw-semibold">{{ l.op.nom }}</td>
+      <td class="text-center">
+        {% if s.evaluable %}<span class="badge bg-{{ s.couleur }}" style="font-size:.95rem">{{ s.total }}</span>
+        {% else %}<span class="text-muted">—</span>{% endif %}
+      </td>
+      <td><span class="badge bg-{{ s.couleur }}">{{ s.classe }}</span></td>
+      <td class="text-end">{{ (s.rdt_moyen ~ ' kg/ha') if s.rdt_moyen else '—' }}</td>
+      <td class="text-end">{{ s.n_producteurs }}</td>
+      <td class="text-end">{{ s.n_parcelles }}</td>
+      <td class="text-end">{{ "{:,.0f}".format(s.montant_accorde).replace(",", " ") ~ ' FCFA' if s.montant_accorde else '—' }}</td>
+      <td style="min-width:260px">
+        {% for c in s.composantes %}
+        <div class="d-flex align-items-center mb-1" style="gap:6px">
+          <span class="small text-muted" style="width:130px">{{ c.libelle }}</span>
+          <div class="progress flex-grow-1" style="height:8px">
+            <div class="progress-bar bg-success" style="width:{{ (c.valeur / c.max * 100) if c.max else 0 }}%"></div>
+          </div>
+          <span class="small" style="width:38px">{{ c.valeur }}/{{ c.max }}</span>
+        </div>
+        {% else %}<span class="text-muted small">{{ s.message }}</span>{% endfor %}
+      </td>
+    </tr>
+  {% else %}
+    <tr><td colspan="8" class="text-center text-muted py-4">Aucune OP dans votre périmètre.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div></div></div>
+{% endblock %}
