@@ -24,8 +24,12 @@ services:
       - DB_PORT=5432
       - DB_NAME=${DB_NAME:-ancar_db}
       - GEE_PROJECT=${GEE_PROJECT:-ancarsi-f07fd}
+    volumes:
+      # fiches techniques déposées, état du calcul des indices : conservés entre les mises à jour
+      - ./instance:/app/instance
     ports:
-      - "5000:5000"
+      # accessible seulement par Nginx (sur le serveur), pas directement depuis Internet
+      - "127.0.0.1:5000:5000"
 
 volumes:
   postgres_data:

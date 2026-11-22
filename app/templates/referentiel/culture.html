@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block title %}{{ c.nom }} — Référentiel — ANCAR SIG{% endblock %}
+{% macro num(k, label, unite='', step='any') %}
+<div class="col-6 col-md-3">
+  <label class="form-label small mb-0">{{ label }}{% if unite %} <span class="text-muted">({{ unite }})</span>{% endif %}</label>
+  <input name="{{ k }}" value="{{ c[k] if c[k] is not none else '' }}" inputmode="decimal" class="form-control form-control-sm" {{ 'disabled' if not peut }}>
+</div>
+{% endmacro %}
+{% macro txt(k, label, col='col-md-6') %}
+<div class="col-12 {{ col }}">
+  <label class="form-label small mb-0">{{ label }}</label>
+  <input name="{{ k }}" value="{{ c[k] or '' }}" class="form-control form-control-sm" {{ 'disabled' if not peut }}>
+</div>
+{% endmacro %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+  <h3 class="ancar-title mb-0">{{ c.nom }} {% if c.a_valider %}<span class="badge bg-warning text-dark fs-6">à valider</span>{% endif %}</h3>
+  <a href="{{ url_for('referentiel.liste') }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left"></i> Référentiel</a>
+</div>
+<div class="row g-3">
+  <div class="col-lg-8">
+    <form method="post" class="card border-0 shadow-sm"><div class="card-body">
+      <input type="hidden" name="action" value="culture">
+      <div class="row g-2">
+        <div class="col-12 small fw-semibold text-success">Identification</div>
+        {{ txt('synonymes', 'Noms reconnus dans les fichiers (séparés par des virgules)', 'col-md-12') }}
+        {{ txt('famille', 'Famille', 'col-md-4') }}{{ txt('systeme', 'Système (Pluvial / Irrigué)', 'col-md-4') }}
+        {{ num('ph_min', 'pH minimum') }}
+        {{ txt('periode', 'Période de culture', 'col-md-12') }}{{ txt('ecartements', 'Écartements', 'col-md-12') }}
+
+        <div class="col-12 small fw-semibold text-success mt-2">Cycle et besoins en eau (FAO-56)</div>
+        {{ num('cycle_j', 'Cycle', 'jours') }}{{ num('l_ini', 'Stade initial', 'j') }}{{ num('l_dev', 'Développement', 'j') }}
+        {{ num('l_mid', 'Mi-saison', 'j') }}{{ num('l_fin', 'Arrière-saison', 'j') }}
+        {{ num('kc_ini', 'Kc initial') }}{{ num('kc_mid', 'Kc mi-saison') }}{{ num('kc_fin', 'Kc fin') }}
+
+        <div class="col-12 small fw-semibold text-success mt-2">Rendement de référence</div>
+        {{ num('rdt_min', 'Minimum', 't/ha') }}{{ num('rdt_max', 'Maximum', 't/ha') }}
+
+        <div class="col-12 small fw-semibold text-success mt-2">Fumure recommandée (par hectare)</div>
+        {{ num('fumure_org_min_t', 'Fumure organique min', 't/ha') }}{{ num('fumure_org_max_t', 'Fumure organique max', 't/ha') }}
+        {{ txt('engrais_fond', 'Engrais de fond (formule)', 'col-md-3') }}{{ num('fond_kg', 'Dose de fond', 'kg/ha') }}
+        {{ txt('engrais_couverture', 'Engrais de couverture', 'col-md-3') }}{{ num('couverture_kg', 'Dose par apport', 'kg/ha') }}
+        {{ txt('apports_j', 'Jours des apports après semis / repiquage (ex. 15,30,50)', 'col-md-6') }}
+
+        <div class="col-12 mt-2">
+          <label class="form-label small mb-0">Sources</label>
+          <textarea name="source" rows="3" class="form-control form-control-sm" {{ 'disabled' if not peut }}>{{ c.source or '' }}</textarea>
+        </div>
+        {% if peut %}
+        <div class="col-12 d-flex gap-3 align-items-center mt-2">
+          <button class="btn btn-success btn-sm"><i class="bi bi-save"></i> Enregistrer</button>
+          <label class="small"><input type="checkbox" name="a_valider" class="form-check-input" {{ 'checked' if c.a_valider }}> Valeurs encore à valider</label>
+        </div>
+        {% endif %}
+      </div>
+    </div></form>
+  </div>
+
+  <div class="col-lg-4">
+    <div class="card border-0 shadow-sm mb-3"><div class="card-body small">
+      <h6><i class="bi bi-file-earmark-text text-success"></i> Fiche technique</h6>
+      {% if c.fiche %}
+        <a href="{{ url_for('referentiel.fiche', fid=c.fiche.id) }}">{{ c.fiche.titre or c.fiche.fichier_nom }}</a>
+        <span class="text-muted">· validée le {{ c.fiche.valide_le.strftime('%d/%m/%Y') if c.fiche.valide_le }}</span>
+        · <a href="{{ url_for('referentiel.fiche_fichier', fid=c.fiche.id) }}"><i class="bi bi-download"></i> original</a>
+        <div class="mt-1">{{ c.itineraire.count() }} opération(s) d'itinéraire · {{ c.ravageurs.count() }} ennemi(s) · {{ c.irrigation.count() }} dose(s) d'irrigation{% if c.nom_scientifique %} · <i>{{ c.nom_scientifique }}</i>{% endif %}</div>
+      {% else %}
+        <span class="text-muted">Aucune fiche validée.</span> <a href="{{ url_for('referentiel.fiches_liste') }}">Déposer une fiche</a>
+      {% endif %}
+    </div></div>
+    {% if c.itineraire.count() %}
+    <div class="card border-0 shadow-sm mb-3"><div class="card-body small">
+      <h6><i class="bi bi-list-check text-success"></i> Itinéraire (J0 = {{ c.reference_j0 or 'semis' }})</h6>
+      <table class="table table-sm small mb-0">{% for o in c.itineraire %}<tr><td class="text-end text-muted">J{{ '%+d'|format(o.jour) if o.jour else '0' }}</td><td>{{ o.libelle }}{% if o.optionnel %} <span class="text-muted">(au besoin)</span>{% endif %}</td>
+        <td class="text-nowrap text-end">{% if o.dose_kg_ha %}{{ o.dose_kg_ha|round|int }} kg/ha{% endif %}</td></tr>{% endfor %}</table>
+    </div></div>
+    {% endif %}
+    {% if observe %}
+    <div class="card border-0 shadow-sm mb-3"><div class="card-body small">
+      <h6><i class="bi bi-clipboard-data text-success"></i> Pratiques observées (enquêtes)</h6>
+      <div>{{ observe.n }} fiche(s) de pratiques.</div>
+      {% if observe.npk_kg_ha %}<div>NPK déclaré : {{ observe.npk_kg_ha|round|int }} kg/ha en moyenne</div>{% endif %}
+      {% if observe.uree_kg_ha %}<div>Urée déclarée : {{ observe.uree_kg_ha|round|int }} kg/ha en moyenne</div>{% endif %}
+      {% if observe.rdt %}<div>Rendement mesuré : {{ '%.1f'|format(observe.rdt) }} t/ha ({{ observe.n_rdt }} mesures plausibles)</div>{% endif %}
+    </div></div>
+    {% endif %}
+    <div class="card border-0 shadow-sm"><div class="card-body small">
+      <h6><i class="bi bi-tags text-success"></i> Variétés</h6>
+      <table class="table table-sm small mb-2">
+        {% for v in varietes %}
+        <tr><td><b>{{ v.nom }}</b>{% if v.notes %}<div class="text-muted">{{ v.notes }}</div>{% endif %}</td>
+          <td class="text-nowrap">{{ (v.cycle_j ~ ' j') if v.cycle_j else '' }}{{ (' · ' ~ '%g'|format(v.rdt_potentiel_t) ~ ' t/ha') if v.rdt_potentiel_t else '' }}</td>
+          <td>{% if peut %}<form method="post" onsubmit="return confirm('Supprimer cette variété ?');"><input type="hidden" name="action" value="supprimer_variete"><input type="hidden" name="vid" value="{{ v.id }}"><button class="btn btn-link btn-sm text-danger p-0"><i class="bi bi-x-lg"></i></button></form>{% endif %}</td></tr>
+        {% else %}<tr><td class="text-muted">Aucune variété.</td></tr>{% endfor %}
+      </table>
+      {% if peut %}
+      <form method="post" class="row g-1">
+        <input type="hidden" name="action" value="variete">
+        <div class="col-12"><input name="v_nom" class="form-control form-control-sm" placeholder="Nom de la variété (ajout ou mise à jour)" required></div>
+        <div class="col-6"><input name="v_cycle_j" class="form-control form-control-sm" placeholder="Cycle (j)"></div>
+        <div class="col-6"><input name="v_rdt_potentiel_t" class="form-control form-control-sm" placeholder="Potentiel (t/ha)"></div>
+        <div class="col-12"><input name="v_notes" class="form-control form-control-sm" placeholder="Notes (tolérance, précocité…)"></div>
+        <div class="col-12"><input name="v_source" class="form-control form-control-sm" placeholder="Source (ISRA, semencier…)"></div>
+        <div class="col-12"><button class="btn btn-outline-success btn-sm"><i class="bi bi-plus"></i> Enregistrer la variété</button></div>
+      </form>
+      {% endif %}
+    </div></div>
+  </div>
+</div>
+{% endblock %}

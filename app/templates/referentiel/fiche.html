@@ -1,0 +1,170 @@
+{% extends "base.html" %}
+{% block title %}{{ f.titre or f.fichier_nom }} — Fiches techniques — ANCAR SIG{% endblock %}
+{% macro v(x) -%}{{ ('%g'|format(x)).replace('.', ',') if x is defined and x is not none and x != '' else '' }}{%- endmacro %}
+{% set dis = '' if peut else 'disabled' %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+  <div>
+    <h3 class="ancar-title mb-0">{{ f.titre or f.fichier_nom }}</h3>
+    <div class="small text-muted">{{ f.fichier_nom }} · lu par {{ f.methode|lower }}{% if f.confiance_ocr is not none %} (confiance {{ f.confiance_ocr|round|int }} %){% endif %}
+      · déposé le {{ f.depose_le.strftime('%d/%m/%Y') }}
+      · <span class="badge bg-{{ {'Appliquée': 'success', 'À valider': 'warning text-dark', 'Remplacée': 'secondary', 'Illisible': 'danger'}.get(f.statut, 'secondary') }}">{{ f.statut }}</span></div>
+  </div>
+  <div class="d-flex gap-2">
+    <a href="{{ url_for('referentiel.fiche_fichier', fid=f.id) }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-download"></i> Original</a>
+    <a href="{{ url_for('referentiel.fiches_liste') }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left"></i> Fiches</a>
+  </div>
+</div>
+
+{% if r.erreur %}
+<div class="alert alert-danger small">{{ r.erreur }}</div>
+{% else %}
+<div class="row g-3">
+<div class="col-xl-8">
+<form method="post" id="form_fiche">
+  {% if r.conflits or r.non_trouves %}
+  <div class="alert alert-warning small py-2">
+    {% for x in r.conflits %}<div><i class="bi bi-exclamation-triangle"></i> {{ x }}</div>{% endfor %}
+    {% if r.non_trouves %}<div><i class="bi bi-question-circle"></i> Non trouvé dans la fiche : {{ r.non_trouves|join(', ') }}. Complétez si nécessaire.</div>{% endif %}
+  </div>
+  {% endif %}
+
+  <div class="card border-0 shadow-sm mb-3"><div class="card-body">
+    <h6 class="text-success">Spéculation</h6>
+    <div class="row g-2">
+      <div class="col-md-4"><label class="form-label small mb-0">Spéculation du référentiel</label>
+        <select name="culture_id" class="form-select form-select-sm" {{ dis }}>
+          <option value="">— Nouvelle spéculation —</option>
+          {% for x in cultures %}<option value="{{ x.id }}" {{ 'selected' if (r.culture_id or f.culture_id) == x.id }}>{{ x.nom }}</option>{% endfor %}
+        </select></div>
+      <div class="col-md-4"><label class="form-label small mb-0">ou nouvelle spéculation</label>
+        <input name="nouvelle_culture" value="{{ r.nouvelle_culture or ('' if f.culture_id else (r.titre or '')) }}" class="form-control form-control-sm" placeholder="Nom (si absente de la liste)" {{ dis }}></div>
+      <div class="col-md-4"><label class="form-label small mb-0">Système (nouvelle spéculation)</label>
+        <select name="systeme" class="form-select form-select-sm" {{ dis }}><option>Irrigué</option><option {{ 'selected' if r.systeme == 'Pluvial' }}>Pluvial</option></select></div>
+      <div class="col-md-6"><label class="form-label small mb-0">Nom scientifique</label>
+        <input name="nom_scientifique" value="{{ r.nom_scientifique or '' }}" class="form-control form-control-sm" {{ dis }}></div>
+      <div class="col-md-6"><label class="form-label small mb-0">Jours de l'itinéraire comptés depuis le</label>
+        <select name="reference" class="form-select form-select-sm" {{ dis }}>
+          <option value="repiquage" {{ 'selected' if r.reference == 'repiquage' }}>repiquage (J0 = repiquage)</option>
+          <option value="semis" {{ 'selected' if r.reference != 'repiquage' }}>semis (J0 = semis)</option></select></div>
+    </div>
+  </div></div>
+
+  <div class="card border-0 shadow-sm mb-3"><div class="card-body">
+    <h6 class="text-success">Cycle, rendement et fumure</h6>
+    <div class="row g-2">
+      <div class="col-6 col-md-3"><label class="form-label small mb-0">Cycle (jours)</label>
+        <input name="cycle_j" value="{{ r.cycle_j or '' }}" inputmode="numeric" class="form-control form-control-sm" {{ dis }}></div>
+      <div class="col-md-9 small text-muted pt-md-4">{% if r.cycles %}Dans la fiche : {% for x in r.cycles %}{{ x.mode }} {{ x.min }}–{{ x.max }} j{{ ' ; ' if not loop.last }}{% endfor %}. Valeur proposée : moyenne pour « {{ r.cycle_mode }} ».{% endif %}
+        {% if c and c.cycle_j %}Référentiel actuel : {{ c.cycle_j }} j.{% endif %}</div>
+      <div class="col-6 col-md-3"><label class="form-label small mb-0">Rendement min (t/ha)</label>
+        <input name="rdt_min" value="{{ v(r.rendement[0] if r.rendement) }}" inputmode="decimal" class="form-control form-control-sm" {{ dis }}></div>
+      <div class="col-6 col-md-3"><label class="form-label small mb-0">Rendement max (t/ha)</label>
+        <input name="rdt_max" value="{{ v(r.rendement[1] if r.rendement) }}" inputmode="decimal" class="form-control form-control-sm" {{ dis }}></div>
+      <div class="col-md-6"><label class="form-label small mb-0">Potentiel par défaut de la spéculation (t/ha)</label>
+        <input name="potentiel" value="{{ v(r.get('potentiel') if r.get('potentiel') is not none else (c.rdt_potentiel_t if c else none)) }}" inputmode="decimal" class="form-control form-control-sm" {{ dis }}>
+        <div class="form-text">Valeur actuelle conservée. La modifier recalcule le potentiel des parcelles (module Rendement).</div></div>
+      <div class="col-6 col-md-3"><label class="form-label small mb-0">Fumure organique min (t/ha)</label>
+        <input name="org_min" value="{{ v(r.fumure_org[0] if r.fumure_org) }}" inputmode="decimal" class="form-control form-control-sm" {{ dis }}></div>
+      <div class="col-6 col-md-3"><label class="form-label small mb-0">Fumure organique max (t/ha)</label>
+        <input name="org_max" value="{{ v(r.fumure_org[1] if r.fumure_org) }}" inputmode="decimal" class="form-control form-control-sm" {{ dis }}></div>
+      <div class="col-6 col-md-3"><label class="form-label small mb-0">Engrais de fond</label>
+        <input name="fond_engrais" value="{{ r.fond.engrais if r.fond else '' }}" class="form-control form-control-sm" {{ dis }}></div>
+      <div class="col-6 col-md-3"><label class="form-label small mb-0">Dose de fond (kg/ha)</label>
+        <input name="fond_kg" value="{{ v(r.fond.kg if r.fond) }}" inputmode="decimal" class="form-control form-control-sm" {{ dis }}></div>
+      <div class="col-12"><label class="form-label small mb-0">Périodes de culture</label>
+        <input name="periode" value="{{ r.periode or '' }}" class="form-control form-control-sm" {{ dis }}></div>
+      <div class="col-12"><label class="form-label small mb-0">Écartements</label>
+        <input name="ecartements" value="{{ r.ecartements or '' }}" class="form-control form-control-sm" {{ dis }}></div>
+    </div>
+  </div></div>
+
+  <div class="card border-0 shadow-sm mb-3"><div class="card-body">
+    <h6 class="text-success">Variétés recommandées <span class="badge bg-light text-dark">{{ (r.varietes or [])|length }}</span></h6>
+    <div class="row g-2">
+      <div class="col-md-5"><textarea name="varietes" rows="10" class="form-control form-control-sm" {{ dis }}>{% for x in r.varietes or [] %}{{ x.nom }}
+{% endfor %}</textarea>
+        <div class="form-text">Une variété par ligne. Les variétés absentes du référentiel sont ajoutées (aucune n'est supprimée).</div></div>
+      <div class="col-md-7 small">
+        {% for s in r.saisons or [] %}<div class="mb-1"><b>{{ s.saison }}</b>{% if s.periode %} ({{ s.periode }}){% endif %} :
+          {% for x in s.varietes %}<span class="{{ 'text-success fw-semibold' if cle(x) not in existantes }}">{{ x }}</span>{{ ', ' if not loop.last }}{% endfor %}</div>{% endfor %}
+        {% if r.saisons %}<div class="text-muted"><span class="text-success fw-semibold">En vert</span> : variétés nouvelles pour le référentiel.</div>{% endif %}
+        {% if r.semences_pepiniere or r.semis_direct %}<div class="mt-2 text-muted">Semences : {{ r.semences_pepiniere or '' }}{% if r.pepiniere_j %} (pépinière {{ r.pepiniere_j[0] }}–{{ r.pepiniere_j[1] }} j){% endif %}{% if r.semis_direct %} ; semis direct {{ r.semis_direct }}{% endif %}.</div>{% endif %}
+      </div>
+    </div>
+  </div></div>
+
+  <div class="card border-0 shadow-sm mb-3"><div class="card-body">
+    <h6 class="text-success">Itinéraire technique <span class="small text-muted fw-normal">— jours depuis le {{ r.reference or 'semis' }} (négatif : avant). Sert au calendrier et au suivi des opérations sur chaque parcelle.</span></h6>
+    <div class="table-responsive"><table class="table table-sm small align-middle mb-0" style="min-width:860px">
+      <thead class="table-light"><tr><th style="width:75px">Jour</th><th style="width:140px">Catégorie</th><th style="min-width:240px">Opération</th><th style="width:115px">Produit</th><th style="width:90px">kg/ha</th><th style="min-width:180px">Détails</th><th title="Au besoin : jamais signalée en retard">Au besoin</th></tr></thead>
+      {% set ops = r.itineraire or [] %}
+      {% for o in ops + [{}, {}, {}] %}{% set n = loop.index0 %}
+      <tr>
+        <td><input name="it_jour_{{ n }}" value="{{ o.jour if o.jour is not none else '' }}" class="form-control form-control-sm" {{ dis }}></td>
+        <td><select name="it_categorie_{{ n }}" class="form-select form-select-sm" {{ dis }}>{% for k in categories %}<option {{ 'selected' if o.categorie == k }}>{{ k }}</option>{% endfor %}</select></td>
+        <td><input name="it_libelle_{{ n }}" value="{{ o.libelle or '' }}" class="form-control form-control-sm" placeholder="{{ 'Nouvelle opération' if not o }}" {{ dis }}></td>
+        <td><input name="it_produit_{{ n }}" value="{{ o.produit or '' }}" class="form-control form-control-sm" {{ dis }}></td>
+        <td><input name="it_dose_{{ n }}" value="{{ v(o.dose) }}" inputmode="decimal" class="form-control form-control-sm" {{ dis }}></td>
+        <td><input name="it_details_{{ n }}" value="{{ o.details or '' }}" class="form-control form-control-sm" title="{{ o.details or '' }}" {{ dis }}></td>
+        <td class="text-center"><input type="checkbox" name="it_opt_{{ n }}" class="form-check-input" {{ 'checked' if o.optionnel }} {{ dis }}></td>
+      </tr>{% endfor %}
+    </table></div>
+    <div class="form-text">Pour retirer une opération, videz son libellé. Le fumier est en kg/ha (10 t/ha = 10 000).</div>
+  </div></div>
+
+  <div class="card border-0 shadow-sm mb-3"><div class="card-body">
+    <h6 class="text-success">Irrigation <span class="small text-muted fw-normal">— doses journalières (l/m²/j) par phase ; « début → fin » quand la dose évolue au cours de la phase</span></h6>
+    <div class="table-responsive"><table class="table table-sm small align-middle mb-0" style="min-width:860px">
+      <thead class="table-light"><tr><th style="width:175px">Système</th><th style="width:70px">Phase</th><th>Phase de la culture</th><th style="width:90px">Début</th><th style="width:90px">Fin</th></tr></thead>
+      {% for x in (r.irrigation or []) + [{}, {}] %}{% set n = loop.index0 %}
+      <tr>
+        <td><select name="irr_systeme_{{ n }}" class="form-select form-select-sm" {{ dis }}>{% for k in systemes %}<option {{ 'selected' if x.systeme == k }}>{{ k }}</option>{% endfor %}</select></td>
+        <td><input name="irr_phase_{{ n }}" value="{{ x.phase or '' }}" class="form-control form-control-sm" {{ dis }}></td>
+        <td><input name="irr_libelle_{{ n }}" value="{{ x.libelle or '' }}" class="form-control form-control-sm" {{ dis }}></td>
+        <td><input name="irr_debut_{{ n }}" value="{{ v(x.debut) }}" class="form-control form-control-sm" {{ dis }}></td>
+        <td><input name="irr_fin_{{ n }}" value="{{ v(x.fin) }}" class="form-control form-control-sm" {{ dis }}></td>
+      </tr>{% endfor %}
+    </table></div>
+    {% if r.arret_irrigation %}<div class="small text-muted mt-1">{{ r.arret_irrigation }}</div>{% endif %}
+  </div></div>
+
+  <div class="card border-0 shadow-sm mb-3"><div class="card-body">
+    <h6 class="text-success">Ennemis et traitements <span class="badge bg-light text-dark">{{ (r.ennemis or [])|length }}</span></h6>
+    <div class="table-responsive"><table class="table table-sm small align-middle mb-0" style="min-width:860px">
+      <thead class="table-light"><tr><th style="min-width:220px">Ennemi</th><th style="width:135px">Type</th><th style="width:170px">Précisions</th><th>Matières actives (séparées par des virgules)</th></tr></thead>
+      {% for e in (r.ennemis or []) + [{}, {}] %}{% set n = loop.index0 %}
+      <tr>
+        <td><input name="rv_nom_{{ n }}" value="{{ e.nom or '' }}" class="form-control form-control-sm" {{ dis }}>
+          <input type="hidden" name="rv_traitement_{{ n }}" value="{{ e.traitement or '' }}"></td>
+        <td><select name="rv_type_{{ n }}" class="form-select form-select-sm" {{ dis }}>{% for k in types %}<option {{ 'selected' if e.type == k }}>{{ k }}</option>{% endfor %}</select></td>
+        <td><input name="rv_precisions_{{ n }}" value="{{ e.precisions or '' }}" class="form-control form-control-sm" {{ dis }}></td>
+        <td><input name="rv_ma_{{ n }}" value="{{ (e.matieres_actives or [])|join(', ') }}" class="form-control form-control-sm" title="{{ e.traitement or '' }}" {{ dis }}>
+          {% if e.traitement and e.traitement|length > ((e.matieres_actives or [])|join(', '))|length + 25 %}<div class="text-muted" style="font-size:.75rem">Fiche : {{ e.traitement|truncate(160) }}</div>{% endif %}</td>
+      </tr>{% endfor %}
+    </table></div>
+    {% if r.nb_traitement %}<div class="small text-muted mt-1">{{ r.nb_traitement }}</div>{% endif %}
+  </div></div>
+
+  {% if peut %}
+  <div class="d-flex flex-wrap gap-2 mb-4">
+    <button name="action" value="appliquer" class="btn btn-success" onclick="return confirm('Valider la fiche et mettre à jour le référentiel de cette spéculation ?');"><i class="bi bi-check2-circle"></i> Valider et appliquer au référentiel</button>
+    <button name="action" value="enregistrer" class="btn btn-outline-success"><i class="bi bi-save"></i> Enregistrer les corrections</button>
+  </div>
+  {% endif %}
+</form>
+</div>
+
+<div class="col-xl-4">
+  <div class="card border-0 shadow-sm" style="position:sticky;top:70px"><div class="card-body">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <h6 class="mb-0"><i class="bi bi-file-text text-success"></i> Texte lu dans la fiche</h6>
+      {% if peut %}<form method="post"><input type="hidden" name="action" value="relire">
+        <button class="btn btn-link btn-sm p-0" title="Recalculer les valeurs proposées (annule les corrections non appliquées)"><i class="bi bi-arrow-repeat"></i> Relire</button></form>{% endif %}
+    </div>
+    <pre class="small bg-light p-2 rounded mb-0" style="max-height:75vh;overflow:auto;white-space:pre-wrap">{{ f.texte }}</pre>
+  </div></div>
+</div>
+</div>
+{% endif %}
+{% endblock %}

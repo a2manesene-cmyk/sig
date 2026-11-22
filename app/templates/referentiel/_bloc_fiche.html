@@ -1,0 +1,37 @@
+{# Bloc « Besoins de la culture » de la fiche parcelle (référentiel des cultures) #}
+{% set b = besoins_culture(p) %}
+{% if b %}
+<div class="card border-0 shadow-sm mt-3" id="besoins"><div class="card-body">
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+    <h6 class="mb-0"><i class="bi bi-clipboard2-pulse text-success"></i> Besoins de la culture{% if b.culture %} — {{ b.culture.nom }}{% endif %}</h6>
+    {% if b.culture %}<a href="{{ url_for('referentiel.parcelle', pid=p.id) }}" class="btn btn-outline-success btn-sm"><i class="bi bi-calculator"></i> Calendrier, fumure et eau</a>{% endif %}
+  </div>
+  {% if not b.culture %}
+  <p class="small text-muted mb-0">La culture « {{ p.culture or '—' }} » n'est pas dans le <a href="{{ url_for('referentiel.liste') }}">référentiel des cultures</a>.</p>
+  {% else %}
+  {% set f = b.fumure %}
+  <div class="row g-2 small">
+    <div class="col-6 col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted">Cycle</div>
+      <div class="fw-semibold">{{ b.culture.cycle_j }} j</div><div class="text-muted">dès le {{ b.debut|jour_mois }} ({{ b.origine }})</div></div></div>
+    <div class="col-6 col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted">Fumure organique</div>
+      <div class="fw-semibold">{{ ('%.1f t'|format(f.organique.t)).replace('.', ',') if f.organique else '—' }}</div></div></div>
+    <div class="col-6 col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted">Engrais minéral</div>
+      <div class="fw-semibold">{{ (f.total_kg|round|int ~ ' kg') if f.total_kg else '—' }}</div><div class="text-muted">{{ ('%.1f'|format(f.total_sacs)).replace('.', ',') ~ ' sac(s)' if f.total_kg else 'à renseigner' }}</div></div></div>
+    <div class="col-6 col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted">{{ 'Irrigation sur le cycle' if b.eau else 'Eau' }}</div>
+      <div class="fw-semibold">{{ ('{:,.0f} m³'.format(b.eau.m3)).replace(',', ' ') if b.eau else 'pluviale' }}</div>
+      {% if b.eau %}<div class="text-muted">pointe {{ ('%.1f'|format(b.eau.pic_litres_jour / 1000)).replace('.', ',') }} m³/j</div>{% endif %}</div></div>
+  </div>
+  {% for r in f.remarques %}<div class="small mt-1 text-{{ 'danger' if 'pH' in r else 'muted' }}"><i class="bi bi-info-circle"></i> {{ r }}</div>{% endfor %}
+  {% if b.suivi %}{% set s = b.suivi %}
+  <div class="small mt-2 border-top pt-2"><i class="bi bi-list-check text-success"></i> <b>Itinéraire technique</b> :
+    {% if s.comptes.get('En retard') %}<span class="badge bg-danger">{{ s.comptes['En retard'] }} opération(s) en retard</span>{% endif %}
+    {% if s.comptes.get('Réalisée') %}<span class="badge bg-success">{{ s.comptes['Réalisée'] }} réalisée(s)</span>{% endif %}
+    {% if s.prochaine %} · prochaine : {{ s.prochaine.op.libelle }} le {{ s.prochaine.date|jour_mois }}{% endif %}
+    <a href="{{ url_for('referentiel.parcelle', pid=p.id) }}#itineraire">suivre</a></div>
+  {% elif b.culture.fiche_id %}
+  <div class="small mt-2 border-top pt-2 text-muted"><i class="bi bi-list-check"></i> Fiche technique validée : enregistrez la date de {{ b.culture.reference_j0 or 'semis' }} pour
+    <a href="{{ url_for('referentiel.parcelle', pid=p.id) }}#itineraire">suivre l'itinéraire</a> de la parcelle.</div>
+  {% endif %}
+  {% endif %}
+</div></div>
+{% endif %}

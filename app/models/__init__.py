@@ -26,3 +26,7 @@ from .suivi import SuiviTerrain
 from .programme import Programme
 from .notification import NotificationLog
 from .financement import FinancementOP
+from .sol import PointSolIFDC, AnalyseSol, HistoriqueSol
+from .climat import CelluleClimat, ParcelleCellule, ClimatJournalier, SaisonClimat
+from .enquete import PratiqueCampagne, AttributParcelle, SourceParcelle
+from .referentiel import CultureRef, VarieteRef, PotentielParcelle

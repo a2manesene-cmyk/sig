@@ -48,6 +48,7 @@
       <p class="text-muted small mb-0">Aucun historique. Importez-le depuis <a href="{{ url_for('parcelles.import_historique') }}">Parcelles → Historique cultural</a>.</p>
       {% endif %}
     </div></div>
+    {% include "parcelles/_bloc_enquete.html" %}
   </div>
 
   <!-- Lecture agronomique + Courbe -->
@@ -149,8 +150,14 @@
 </div></div>
 
 <div class="card border-0 shadow-sm mt-3" id="potentiel"><div class="card-body">
-  <h6 class="mb-2"><i class="bi bi-bar-chart-line text-success"></i> Rendement potentiel (variété)</h6>
-  <p class="small text-muted mb-2">Potentiel de la variété <b>Mastrop</b> (estimé entre 4 et 5 t/ha). Valeur modulable par parcelle ; elle sert de référence tant qu'aucun rendement réel n'est saisi.</p>
+  {% set org_pot = origine_potentiel(p.id) %}
+  <h6 class="mb-2"><i class="bi bi-bar-chart-line text-success"></i> Rendement potentiel</h6>
+  <p class="small text-muted mb-2">
+    {% if org_pot and org_pot.origine == 'variete' %}Potentiel de la variété <b>{{ org_pot.variete.nom }}</b> ({{ org_pot.culture.nom }}), défini dans le référentiel.
+    {% elif org_pot and org_pot.origine == 'speculation' %}Potentiel par défaut de la spéculation <b>{{ org_pot.culture.nom }}</b>{% if org_pot.variete %} (variété {{ org_pot.variete.nom }} sans potentiel propre){% endif %}.
+    {% elif org_pot and org_pot.origine == 'manuel' %}Valeur <b>saisie à la main</b> pour cette parcelle : elle n'est pas modifiée par le référentiel.
+    {% else %}Potentiel de la variété, modulable par parcelle.{% endif %}
+    Il sert de référence tant qu'aucun rendement réel n'est saisi.</p>
   <div class="d-flex align-items-center flex-wrap gap-2">
     <span class="fs-5 fw-semibold">{{ (p.rendement_potentiel|int ~ ' kg/ha') if p.rendement_potentiel else '— (non défini)' }}</span>
     {% if current_user.niveau >= 2 %}
@@ -159,69 +166,17 @@
              value="{{ p.rendement_potentiel|int if p.rendement_potentiel else 4500 }}">
       <span class="small text-muted">kg/ha</span>
       <button class="btn btn-success btn-sm"><i class="bi bi-save"></i> Enregistrer</button>
+      {% if org_pot and org_pot.origine == 'manuel' %}
+      <button name="automatique" value="1" class="btn btn-outline-secondary btn-sm" title="Reprendre le potentiel de la variété ou de la spéculation">Revenir au référentiel</button>
+      {% endif %}
     </form>
     {% endif %}
   </div>
 </div></div>
 
-<div class="card border-0 shadow-sm mt-3" id="sol"><div class="card-body">
-  <h6 class="mb-3"><i class="bi bi-moisture text-success"></i> Qualité du sol</h6>
-  {% set fcol = {'Bonne':'success','Moyenne':'warning','Faible':'danger'} %}
-  <div class="row g-3">
-    <div class="col-md-5">
-      {% if p.sol_fertilite or p.sol_type or p.sol_ph or p.sol_mo %}
-      <ul class="list-unstyled small mb-0">
-        <li><b>Fertilité :</b>
-          {% if p.sol_fertilite %}<span class="badge bg-{{ fcol.get(p.sol_fertilite,'secondary') }}">{{ p.sol_fertilite }}</span>{% else %}—{% endif %}</li>
-        <li><b>Type / texture :</b> {{ p.sol_type or '—' }}</li>
-        <li><b>pH :</b> {{ p.sol_ph if p.sol_ph is not none else '—' }}</li>
-        <li><b>Matière organique :</b> {{ (p.sol_mo ~ ' %') if p.sol_mo is not none else '—' }}</li>
-        <li><b>Source :</b> {{ p.sol_source or '—' }}</li>
-        {% if p.sol_note %}<li><b>Note :</b> {{ p.sol_note }}</li>{% endif %}
-      </ul>
-      {% else %}
-      <p class="text-muted small mb-0">Aucune donnée de sol renseignée.</p>
-      {% endif %}
-    </div>
-    {% if current_user.niveau >= 2 %}
-    <div class="col-md-7">
-      <form method="post" action="{{ url_for('parcelles.enregistrer_sol', pid=p.id) }}" class="row g-2">
-        <div class="col-6">
-          <label class="form-label small mb-0">Fertilité</label>
-          <select name="sol_fertilite" class="form-select form-select-sm">
-            <option value="">—</option>
-            {% for o in ['Faible','Moyenne','Bonne'] %}<option {{ 'selected' if p.sol_fertilite==o }}>{{ o }}</option>{% endfor %}
-          </select>
-        </div>
-        <div class="col-6">
-          <label class="form-label small mb-0">Type / texture</label>
-          <input name="sol_type" value="{{ p.sol_type or '' }}" class="form-control form-control-sm" placeholder="Sablo-argileux…">
-        </div>
-        <div class="col-4">
-          <label class="form-label small mb-0">pH</label>
-          <input name="sol_ph" value="{{ p.sol_ph if p.sol_ph is not none else '' }}" class="form-control form-control-sm" placeholder="6.5">
-        </div>
-        <div class="col-4">
-          <label class="form-label small mb-0">M.O. (%)</label>
-          <input name="sol_mo" value="{{ p.sol_mo if p.sol_mo is not none else '' }}" class="form-control form-control-sm" placeholder="1.2">
-        </div>
-        <div class="col-4">
-          <label class="form-label small mb-0">Source</label>
-          <select name="sol_source" class="form-select form-select-sm">
-            <option value="">—</option>
-            {% for o in ['Analyse labo','Carte pédologique','Terrain'] %}<option {{ 'selected' if p.sol_source==o }}>{{ o }}</option>{% endfor %}
-          </select>
-        </div>
-        <div class="col-12">
-          <label class="form-label small mb-0">Note</label>
-          <textarea name="sol_note" rows="1" class="form-control form-control-sm" placeholder="Observation…">{{ p.sol_note or '' }}</textarea>
-        </div>
-        <div class="col-12"><button class="btn btn-success btn-sm"><i class="bi bi-save"></i> Enregistrer le sol</button></div>
-      </form>
-    </div>
-    {% endif %}
-  </div>
-</div></div>
+{% include "sol/_bloc_fiche.html" %}
+{% include "climat/_bloc_fiche.html" %}
+{% include "referentiel/_bloc_fiche.html" %}
 
 <div class="card border-0 shadow-sm mt-3" id="suivi"><div class="card-body">
   <h6 class="mb-3"><i class="bi bi-clipboard-check text-success"></i> Suivi de terrain (animateur / CAR)</h6>

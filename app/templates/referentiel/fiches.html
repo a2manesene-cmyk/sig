@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Fiches techniques — ANCAR SIG{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+  <h3 class="ancar-title mb-0">Fiches techniques <span class="badge ancar-badge">{{ fiches|length }}</span></h3>
+  <div class="d-flex gap-2">
+    <a href="{{ url_for('referentiel.suivi') }}" class="btn btn-outline-success btn-sm"><i class="bi bi-list-check"></i> Suivi des opérations</a>
+    <a href="{{ url_for('referentiel.liste') }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-journal-bookmark"></i> Référentiel</a>
+  </div>
+</div>
+<p class="small text-muted">Les fiches techniques (ISRA / ANCAR) sont lues automatiquement — directement pour un fichier Word ou un PDF,
+  par reconnaissance de caractères (OCR) pour un scan ou une photo. Les valeurs extraites (variétés, fumure, irrigation, cycle,
+  rendement, ennemis et traitements) sont vérifiées puis validées par l'administration : elles alimentent alors le référentiel,
+  le plan de fumure, les besoins en eau et l'itinéraire technique suivi sur chaque parcelle.</p>
+
+{% if peut %}
+<form method="post" enctype="multipart/form-data" class="card border-0 shadow-sm mb-3"
+      onsubmit="const b=this.querySelector('button');b.disabled=true;b.innerHTML='Lecture en cours… (OCR : jusqu\'à une minute par fiche)';">
+  <div class="card-body">
+    <h6><i class="bi bi-cloud-upload text-success"></i> Déposer des fiches</h6>
+    <div class="row g-2 align-items-center">
+      <div class="col-md-8"><input type="file" name="fichiers" multiple class="form-control form-control-sm"
+           accept=".docx,.doc,.odt,.pdf,.jpg,.jpeg,.png,.tif,.tiff"></div>
+      <div class="col-md-4 d-grid"><button class="btn btn-success btn-sm"><i class="bi bi-magic"></i> Lire et extraire</button></div>
+    </div>
+    <div class="small text-muted mt-2">Word (.docx, conseillé : lecture exacte, texte barré ignoré), PDF, ou image (scan, photo) ·
+      plusieurs fichiers à la fois · 20 Mo maximum.
+      {% if not ocr %}<span class="text-danger">L'OCR n'est pas installé sur le serveur : seuls les fichiers Word et les PDF avec texte sont lisibles.</span>{% endif %}</div>
+  </div>
+</form>
+{% endif %}
+
+<div class="card border-0 shadow-sm"><div class="card-body p-0"><div class="table-responsive">
+<table class="table table-hover table-sm align-middle mb-0 small">
+  <thead class="table-light"><tr><th>Fiche</th><th>Spéculation</th><th>Lecture</th><th>Déposée le</th><th>Statut</th><th></th></tr></thead>
+  <tbody>
+  {% for f in fiches %}
+    <tr>
+      <td><a href="{{ url_for('referentiel.fiche', fid=f.id) }}" class="fw-semibold text-decoration-none">{{ f.titre or f.fichier_nom }}</a>
+        <div class="text-muted">{{ f.fichier_nom }} · {{ f.taille_ko }} Ko</div></td>
+      <td>{% if f.culture %}<a href="{{ url_for('referentiel.culture', cid=f.culture.id) }}">{{ f.culture.nom }}</a>{% else %}<span class="text-warning">à préciser</span>{% endif %}</td>
+      <td>{{ f.methode or '—' }}{% if f.confiance_ocr is not none %} <span class="text-muted">({{ f.confiance_ocr|round|int }} %)</span>{% endif %}</td>
+      <td class="text-nowrap">{{ f.depose_le.strftime('%d/%m/%Y') if f.depose_le }}</td>
+      <td>{% set cl = {'Appliquée': 'success', 'À valider': 'warning text-dark', 'Remplacée': 'secondary', 'Illisible': 'danger'} %}
+        <span class="badge bg-{{ cl.get(f.statut, 'secondary') }}">{{ f.statut }}</span>
+        {% if f.valide_le %}<div class="text-muted">le {{ f.valide_le.strftime('%d/%m/%Y') }}</div>{% endif %}</td>
+      <td class="text-end text-nowrap">
+        <a href="{{ url_for('referentiel.fiche_fichier', fid=f.id) }}" class="btn btn-link btn-sm p-0 me-2" title="Télécharger l'original"><i class="bi bi-download"></i></a>
+        <a href="{{ url_for('referentiel.fiche', fid=f.id) }}" class="btn btn-outline-success btn-sm py-0">{{ 'Vérifier' if f.statut == 'À valider' and peut else 'Voir' }}</a></td>
+    </tr>
+  {% else %}
+    <tr><td colspan="6" class="text-muted p-3">Aucune fiche déposée.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div></div></div>
+
+{% set sans = cultures|rejectattr('fiche_id')|map(attribute='nom')|list %}
+{% if sans %}<p class="small text-muted mt-2 mb-0">Spéculations sans fiche validée : {{ sans|join(', ') }}.</p>{% endif %}
+{% endblock %}

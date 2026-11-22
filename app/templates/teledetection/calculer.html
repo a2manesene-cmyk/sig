@@ -1,64 +1,98 @@
 {% extends "base.html" %}
 {% block title %}Calcul des indices (GEE) — ANCAR SIG{% endblock %}
+{% block head %}{% if statut and statut.etat == 'en cours' %}<meta http-equiv="refresh" content="20">{% endif %}{% endblock %}
 
 {% block content %}
-<div class="row justify-content-center"><div class="col-lg-7">
+<div class="row justify-content-center"><div class="col-lg-8">
   <h3 class="ancar-title mb-3">Calcul des indices — Google Earth Engine</h3>
+
+  <div class="row g-3 mb-3">
+    <div class="col-md-4"><div class="card border-0 shadow-sm h-100"><div class="card-body py-2">
+      <div class="text-muted small">Parcelles suivies depuis le {{ couverture.debut.strftime('%d/%m/%Y') }}</div>
+      <div class="fs-5 fw-semibold text-success">{{ couverture.avec }}</div></div></div></div>
+    <div class="col-md-4"><div class="card border-0 shadow-sm h-100"><div class="card-body py-2">
+      <div class="text-muted small">Parcelles sans historique</div>
+      <div class="fs-5 fw-semibold {{ 'text-danger' if couverture.sans else '' }}">{{ couverture.sans }}</div></div></div></div>
+    <div class="col-md-4"><div class="card border-0 shadow-sm h-100"><div class="card-body py-2">
+      <div class="text-muted small">Dernier passage enregistré</div>
+      <div class="fs-5 fw-semibold">{{ couverture.derniere.strftime('%d/%m/%Y') if couverture.derniere else '—' }}</div></div></div></div>
+  </div>
+
+  {% if statut %}
+  {% set cl = {'en cours': 'info', 'terminé': 'success', 'terminé avec erreurs': 'warning', 'interrompu': 'danger'} %}
+  <div class="alert alert-{{ cl.get(statut.etat, 'light') }} small">
+    <div class="d-flex justify-content-between flex-wrap gap-2">
+      <b>{% if statut.etat == 'en cours' %}<span class="spinner-border spinner-border-sm me-1"></span>{% endif %}
+        Calcul par passage du satellite : {{ statut.etat }}</b>
+      <span class="text-muted">lancé le {{ (statut.lance_le or '')[:16]|replace('T', ' à ') }}</span>
+    </div>
+    <div>{{ statut.message }}{% if statut.sans_image %} · {{ statut.sans_image }} sans image{% endif %}</div>
+    {% if statut.total %}<div class="progress mt-2" style="height:6px"><div class="progress-bar" style="width:{{ (100 * (statut.faites or 0) / statut.total)|round|int }}%"></div></div>{% endif %}
+    {% if statut.etat == 'interrompu' %}<div class="mt-1">Le calcul s'est arrêté (serveur redémarré ?). Relancez-le : il reprend là où il s'était arrêté.</div>{% endif %}
+    {% if journal %}<details class="mt-2"><summary>Journal</summary><pre class="mb-0 mt-1" style="white-space:pre-wrap;font-size:.75rem">{{ journal|join('') }}</pre></details>{% endif %}
+  </div>
+  {% endif %}
+
   <div class="card border-0 shadow-sm"><div class="card-body">
   <form method="POST">
     <div class="row g-3">
-      <div class="col-md-6">
-        <label class="form-label">Début de la période observée</label>
-        <input type="date" name="date_debut" class="form-control" value="2026-05-15" max="{{ aujourdhui }}" required>
+      <div class="col-12">
+        <div class="form-check">
+          <input class="form-check-input" type="radio" name="serie" id="serie" value="on" checked>
+          <label class="form-check-label" for="serie">
+            <b>Évolution à chaque passage du satellite</b> (recommandé) — une valeur par acquisition Sentinel-2.
+            Chaque parcelle est complétée <b>depuis le début de la période</b> si elle n'a pas d'historique
+            (nouvelles parcelles), sinon depuis son dernier passage enregistré. Le calcul tourne en arrière-plan.
+          </label>
+        </div>
+        <div class="form-check ms-4 mt-1">
+          <input class="form-check-input" type="checkbox" name="recalculer" id="recalculer">
+          <label class="form-check-label small" for="recalculer">Tout recalculer depuis le début de la période (plus long)</label>
+        </div>
+        <div class="form-check mt-2">
+          <input class="form-check-input" type="radio" name="serie" id="instantane" value="">
+          <label class="form-check-label" for="instantane"><b>Instantané</b> — une seule valeur (composite médian de la période), enregistrée à la date de fin.</label>
+        </div>
       </div>
       <div class="col-md-6">
-        <label class="form-label">Fin de la période observée</label>
-        <input type="date" name="date_fin" id="dateFin" class="form-control" value="{{ aujourdhui }}" max="{{ aujourdhui }}" required>
-        <div class="form-text">En mode « instantané », le calcul est <b>enregistré sous cette date</b> : <span id="recapDate" class="fw-semibold">—</span></div>
+        <label class="form-label">Début de la période</label>
+        <input type="date" name="date_debut" class="form-control" value="{{ debut_campagne }}" max="{{ aujourdhui }}" required>
       </div>
-      <div class="col-md-8">
-        <label class="form-label">Périmètre</label>
+      <div class="col-md-6">
+        <label class="form-label">Fin de la période</label>
+        <input type="date" name="date_fin" class="form-control" value="{{ aujourdhui }}" max="{{ aujourdhui }}" required>
+      </div>
+      <div class="col-md-8" id="blocRegion" style="display:none">
+        <label class="form-label">Périmètre (instantané)</label>
         <select name="region" class="form-select">
           <option value="">Toutes les parcelles</option>
           {% for r in regions %}<option value="{{ r.id }}">{{ r.nom }}</option>{% endfor %}
         </select>
       </div>
-      <div class="col-12">
-        <div class="form-check">
-          <input class="form-check-input" type="checkbox" name="serie" id="serie" checked>
-          <label class="form-check-label" for="serie">
-            <b>Évolution à chaque passage du satellite</b> (série temporelle) — un point par acquisition Sentinel-2 sur la période, pour suivre la courbe depuis le début.
-          </label>
-        </div>
-        <div class="form-text">Décochez pour un simple <b>instantané</b> (une seule valeur médiane à la date de fin).</div>
-      </div>
     </div>
     <div class="mt-3">
-      <button class="btn ancar-btn"><i class="bi bi-cpu"></i> Lancer le calcul</button>
-      <a href="{{ url_for('teledetection.carte') }}" class="btn btn-outline-secondary">Annuler</a>
+      <button class="btn ancar-btn" {{ 'disabled' if statut and statut.etat == 'en cours' }}><i class="bi bi-cpu"></i> Lancer le calcul</button>
+      <a href="{{ url_for('teledetection.carte') }}" class="btn btn-outline-secondary">Retour</a>
     </div>
   </form>
 
   <div class="alert alert-light border mt-3 mb-0 small">
     <i class="bi bi-info-circle text-success"></i>
-    Pour suivre l'<b>évolution</b>, lance le <b>même périmètre</b> à des périodes
-    différentes (chaque période = une date enregistrée). Une fenêtre de 2 à 4 semaines
-    en saison végétative donne un signal net (masquage nuageux automatique).
+    Sentinel-2 repasse tous les 5 jours environ ; les passages nuageux sont masqués. Les nouvelles parcelles importées sont
+    complétées automatiquement depuis le 15 mai. Pour ajouter les nouveaux passages sans y penser, programmez sur le serveur :
+    <code>python calculer_indices.py</code> tous les 5 jours (voir l'en-tête du script).
   </div>
   </div></div>
 
   {% if calculs %}
   <div class="card border-0 shadow-sm mt-3"><div class="card-body">
-    <h6 class="text-muted text-uppercase small mb-3">Calculs déjà enregistrés</h6>
+    <h6 class="text-muted text-uppercase small mb-3">Dates enregistrées (40 dernières)</h6>
     <table class="table table-sm mb-0">
-      <thead class="table-light"><tr><th>Date enregistrée</th><th class="text-end">Parcelles</th></tr></thead>
+      <thead class="table-light"><tr><th>Date</th><th class="text-end">Parcelles</th></tr></thead>
       <tbody>
-      {% for d, n in calculs %}
-        <tr><td>{{ d }}</td><td class="text-end">{{ n }}</td></tr>
-      {% endfor %}
+      {% for d, n in calculs %}<tr><td>{{ d.strftime('%d/%m/%Y') }}</td><td class="text-end">{{ n }}</td></tr>{% endfor %}
       </tbody>
     </table>
-    <div class="form-text mt-2">Relancer un calcul sur une date déjà présente <b>met à jour</b> ces parcelles (pas de doublon).</div>
   </div></div>
   {% endif %}
 </div></div>
@@ -66,9 +100,10 @@
 
 {% block scripts %}
 <script>
-const df = document.getElementById('dateFin');
-const recap = document.getElementById('recapDate');
-function maj() { recap.textContent = df.value || '—'; }
-df.addEventListener('change', maj); maj();
+document.querySelectorAll('input[name=serie]').forEach(r => r.addEventListener('change', () => {
+  const inst = document.getElementById('instantane').checked;
+  document.getElementById('blocRegion').style.display = inst ? '' : 'none';
+  document.getElementById('recalculer').disabled = inst;
+}));
 </script>
 {% endblock %}

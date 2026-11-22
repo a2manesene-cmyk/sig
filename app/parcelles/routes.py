@@ -5,7 +5,7 @@ from flask import (
     Blueprint, render_template, request, redirect, url_for, flash, jsonify
 )
 from flask_login import login_required, current_user
-from sqlalchemy import func, and_
+from sqlalchemy import func, and_, text
 from shapely.geometry import shape, MultiPolygon
 from shapely.ops import transform as shp_transform
 from pyproj import Transformer
@@ -45,10 +45,16 @@ def _i(v):
 
 
 def _premier(props, cles):
-    """Renvoie la première valeur non vide parmi une liste de clés candidates."""
+    """Première valeur non vide parmi une liste de clés candidates (majuscules, accents et
+    espaces en trop ignorés : « Telephone_producteur » = « telephone_producteur »)."""
+    from app.parcelles.enquete import norm
+    pn = {}
+    for k, v in props.items():
+        pn.setdefault(norm(k), v)
     for c in cles:
-        if c in props and props[c] not in (None, ""):
-            return props[c]
+        v = pn.get(norm(c))
+        if v not in (None, "") and str(v).strip().lower() not in ("none", "null"):
+            return v
     return None
 
 
@@ -415,36 +421,11 @@ def carte_image(pid):
     return send_file(buf, mimetype="image/png", as_attachment=True, download_name=nom)
 
 
-@parcelles_bp.route("/<int:pid>/sol", methods=["POST"])
+@parcelles_bp.route("/<int:pid>/sol", methods=["GET", "POST"])
 @login_required
 def enregistrer_sol(pid):
-    """Saisie/mise à jour de la qualité du sol d'une parcelle (niveau >= 2)."""
-    p = db.session.get(Parcelle, pid)
-    if not p:
-        flash("Parcelle introuvable.", "warning")
-        return redirect(url_for("parcelles.liste"))
-    if not peut_voir_parcelle(current_user, pid):
-        flash("Cette parcelle est hors de votre périmètre.", "warning")
-        return redirect(url_for("parcelles.liste"))
-    if current_user.niveau < 2:
-        flash("Vous n'avez pas le droit de modifier le sol.", "warning")
-        return redirect(url_for("parcelles.fiche", pid=pid))
-
-    def _f(v):
-        try:
-            return float(str(v).replace(",", ".")) if v not in (None, "") else None
-        except (TypeError, ValueError):
-            return None
-
-    p.sol_type = (request.form.get("sol_type") or None)
-    p.sol_ph = _f(request.form.get("sol_ph"))
-    p.sol_mo = _f(request.form.get("sol_mo"))
-    p.sol_fertilite = (request.form.get("sol_fertilite") or None)
-    p.sol_source = (request.form.get("sol_source") or None)
-    p.sol_note = (request.form.get("sol_note") or None)
-    db.session.commit()
-    flash("Qualité du sol enregistrée.", "success")
-    return redirect(url_for("parcelles.fiche", pid=pid) + "#sol")
+    """Ancienne saisie du sol : remplacée par le module Sol (analyse complète + historique)."""
+    return redirect(url_for("sol.parcelle", pid=pid, retour="fiche"))
 
 
 @parcelles_bp.route("/<int:pid>/potentiel", methods=["POST"])
@@ -462,6 +443,19 @@ def enregistrer_potentiel(pid):
     if current_user.niveau < 2:
         flash("Vous n'avez pas le droit de modifier le rendement potentiel.", "warning")
         return redirect(url_for("parcelles.fiche", pid=pid))
+    if request.form.get("automatique"):
+        # retour au potentiel du référentiel (variété ou spéculation)
+        try:
+            from app.models.referentiel import PotentielParcelle
+            from app.referentiel.service import appliquer_potentiels
+            db.session.query(PotentielParcelle).filter_by(parcelle_id=pid).delete()
+            s = appliquer_potentiels([pid])
+            flash("Potentiel recalculé depuis le référentiel." if (s["variete"] or s["speculation"])
+                  else "Pas de potentiel dans le référentiel pour cette culture.", "success")
+        except Exception:
+            db.session.rollback()
+            flash("Référentiel des cultures non installé (python init_referentiel.py).", "warning")
+        return redirect(url_for("parcelles.fiche", pid=pid) + "#potentiel")
     try:
         val = float(str(request.form.get("rendement_potentiel", "")).replace(",", "."))
     except (TypeError, ValueError):
@@ -470,14 +464,24 @@ def enregistrer_potentiel(pid):
     p.rendement_potentiel = val
     annee = 2026
     ref = (RendementReference.query
-           .filter_by(parcelle_id=pid, annee=annee).first())
+           .filter_by(parcelle_id=pid, annee=annee)
+           .filter(RendementReference.source.like("Potentiel%")).first())
     if ref:
         ref.rendement_kg_ha = val
-        ref.source = "Potentiel variété (Mastrop)"
+        ref.source = "Potentiel (saisie manuelle)"
     else:
         db.session.add(RendementReference(
-            parcelle_id=pid, annee=annee, culture=(p.culture or "Mastrop"),
-            rendement_kg_ha=val, source="Potentiel variété (Mastrop)"))
+            parcelle_id=pid, annee=annee, culture=p.culture,
+            rendement_kg_ha=val, source="Potentiel (saisie manuelle)"))
+    # saisie manuelle : protégée de l'application automatique des potentiels
+    try:
+        from app.models.referentiel import PotentielParcelle
+        with db.session.begin_nested():
+            pp = db.session.get(PotentielParcelle, pid) or PotentielParcelle(parcelle_id=pid, origine="manuel")
+            pp.origine, pp.variete_id = "manuel", None
+            db.session.add(pp)
+    except Exception:
+        pass
     db.session.commit()
     flash("Rendement potentiel mis à jour.", "success")
     return redirect(url_for("parcelles.fiche", pid=pid) + "#potentiel")
@@ -661,6 +665,24 @@ def importer():
 
         features = data.get("features", []) if data.get("type") == "FeatureCollection" else [data]
 
+        # Système de coordonnées déclaré dans le fichier : il prime sur le choix du formulaire.
+        # Coordonnées en degrés alors qu'un système métrique est choisi : WGS 84.
+        crs_nom = str(((data.get("crs") or {}).get("properties") or {}).get("name") or "")
+        m_crs = re.search(r"EPSG:+(\d{4,5})", crs_nom)
+        if m_crs:
+            srid_src = m_crs.group(1)
+        elif "CRS84" in crs_nom:
+            srid_src = "4326"
+        elif srid_src != "4326":
+            try:
+                xy = next(f["geometry"]["coordinates"] for f in features if f.get("geometry"))
+                while isinstance(xy[0], list):
+                    xy = xy[0]
+                if abs(xy[0]) <= 180 and abs(xy[1]) <= 90:
+                    srid_src = "4326"
+            except (StopIteration, KeyError, IndexError, TypeError):
+                pass
+
         transformer = None
         if srid_src != "4326":
             transformer = Transformer.from_crs(
@@ -674,6 +696,7 @@ def importer():
 
         # Programme (créé à la volée si le nom saisi n'existe pas)
         prog_nom = (request.form.get("programme") or "").strip()
+        culture_defaut = (request.form.get("culture_defaut") or "").strip() or None
         programme_id = None
         if prog_nom:
             prog = Programme.query.filter(func.lower(Programme.nom) == prog_nom.lower()).first()
@@ -682,6 +705,21 @@ def importer():
                 db.session.add(prog)
                 db.session.flush()
             programme_id = prog.id
+        programmes_cache = {pr.nom.strip().lower(): pr for pr in Programme.query.all()}
+
+        def _programme_entite(props):
+            """Programme indiqué dans le fichier (champ « programme »), sinon celui du formulaire."""
+            nom = _premier(props, ["programme", "Programme", "projet"])
+            if not nom:
+                return programme_id
+            k = str(nom).strip().lower()
+            pr = programmes_cache.get(k)
+            if pr is None:
+                pr = Programme(nom=str(nom).strip()[:120], actif=True)
+                db.session.add(pr)
+                db.session.flush()
+                programmes_cache[k] = pr
+            return pr.id
 
         # Géométries existantes : signatures (exact) + index spatial (recouvrement)
         existants = []   # (pid, shapely_geom)
@@ -695,6 +733,12 @@ def importer():
             except Exception:
                 pass
         geoms_exist = [g for (_, g) in existants]
+        geom_par_pid = dict(existants)
+        from app.models.enquete import SourceParcelle
+        sources_exist = {sp.source_id: sp.parcelle_id for sp in db.session.query(SourceParcelle)}
+        prod_exist = {pid_: _enq_norm0(n or "") for pid_, n in
+                      db.session.query(Parcelle.id, Producteur.nom)
+                      .outerjoin(Producteur, Producteur.id == Parcelle.producteur_id).all()}
         tree = None
         if mode == "maj" and geoms_exist:
             from shapely.strtree import STRtree
@@ -702,10 +746,60 @@ def importer():
 
         codes_existants = {c for (c,) in db.session.query(Parcelle.code)
                            .filter(Parcelle.code.isnot(None)).all()}
-        regions_par_nom = {r.nom.strip().lower(): r for r in Region.query.all()}
+        from app.parcelles import enquete as _enq
+        regions_par_nom = {_enq.norm(r.nom): r for r in Region.query.all()}
         camp_cache = {c.libelle: c for c in Campagne.query.all()}
         camp_active = (Campagne.query.filter_by(active=True)
                        .order_by(Campagne.annee.desc()).first())
+        from datetime import date as _d
+        annee_active = camp_active.annee if camp_active else _d.today().year
+        n_prat = n_rdt = 0
+
+        touchees, progs_fichier = set(), set()
+
+        from app.models.indice import IndiceVegetation as _IV
+        from datetime import datetime as _dtm
+        n_indices = 0
+
+        def _complements(p, props):
+            """Champs de l'export complet : rendement potentiel, sol, indices à chaque passage."""
+            nonlocal n_indices
+            pot = _f(_premier(props, ["rendement_potentiel_kg_ha"]))
+            if pot:
+                p.rendement_potentiel = pot
+            for col in ("sol_type", "sol_ph", "sol_mo", "sol_fertilite", "sol_source", "sol_note"):
+                v = _premier(props, [col])
+                if v is not None:
+                    setattr(p, col, _f(v) if col in ("sol_ph", "sol_mo") else str(v)[:200])
+            ind = props.get("indices")
+            if isinstance(ind, list) and ind:
+                deja = {iv.date: iv for iv in db.session.query(_IV).filter_by(parcelle_id=p.id)}
+                for x in ind:
+                    try:
+                        d = _dtm.strptime(str(x.get("date"))[:10], "%Y-%m-%d").date()
+                    except (TypeError, ValueError, AttributeError):
+                        continue
+                    iv = deja.get(d)
+                    if iv is None:
+                        iv = _IV(parcelle_id=p.id, date=d)
+                        db.session.add(iv)
+                        deja[d] = iv
+                    for k in ("ndvi", "ndwi", "ndmi", "savi", "evi"):
+                        setattr(iv, k, _f(x.get(k)))
+                    iv.source = x.get("source") or "GEE Sentinel-2"
+                    n_indices += 1
+
+        def _enquete(p, props, culture):
+            nonlocal n_prat, n_rdt
+            db.session.flush()
+            touchees.add(p.id)
+            _complements(p, props)
+            if p.programme_id:
+                progs_fichier.add(p.programme_id)
+            ok_p, ok_r = _enq.enregistrer(p, props, _enq.annee_campagne(props, annee_active), culture)
+            n_prat += ok_p
+            n_rdt += ok_r
+
         orgs_cache = {o.nom.strip().lower(): o for o in OrganisationProducteur.query.all()}
         prods_cache = {}
         for pr in Producteur.query.all():
@@ -737,14 +831,25 @@ def importer():
                     prod.organisation = org
             return prod, org
 
-        def _historique(p, props):
+        def _historique(p, props, culture=None):
+            """Historique cultural : colonnes « culture … AAAA » et culture de la campagne.
+            Une seule ligne par année ; une nouvelle valeur remplace l'ancienne."""
+            db.session.flush()
+            deja = {h.annee: h for h in db.session.query(HistoriqueCultural).filter_by(parcelle_id=p.id)}
+            valeurs = {}
             for cle, val in props.items():
-                if not val or "culture" not in cle.lower():
+                if val in (None, "") or "culture" not in cle.lower() or str(val).strip().lower() in ("none", "null"):
                     continue
                 m = _ANNEE_RE.search(cle)
-                if not m:
+                if m:
+                    valeurs[int(m.group(1))] = str(val).strip()
+            if culture:
+                valeurs.setdefault(_enq.annee_campagne(props, annee_active), str(culture).strip())
+            for annee, val in valeurs.items():
+                if annee in deja:
+                    if val and deja[annee].culture != val[:80]:
+                        deja[annee].culture = val[:80]
                     continue
-                annee = int(m.group(1))
                 lib = f"Hivernage {annee}"
                 camp = camp_cache.get(lib)
                 if not camp:
@@ -752,11 +857,63 @@ def importer():
                             or Campagne(libelle=lib, annee=annee, active=False))
                     db.session.add(camp)
                     camp_cache[lib] = camp
-                db.session.add(HistoriqueCultural(parcelle=p, campagne=camp,
-                                                  annee=annee, culture=str(val)[:80], source="GeoJSON"))
+                db.session.add(HistoriqueCultural(parcelle_id=p.id, campagne=camp,
+                                                  annee=annee, culture=val[:80], source="GeoJSON"))
 
-        n_new = n_upd = n_redraw = n_dup = n_skip = 0
-        for feat in features:
+        cache_filieres = {}
+        n_new = n_upd = n_redraw = n_dup = n_skip = n_dup_fichier = 0
+        nouvelles = []   # parcelles créées par cet import : (géométrie, producteur normalisé, parcelle)
+        cibles_vues = {}      # parcelle existante -> producteur de l'entité du fichier qui l'a déjà mise à jour
+        cibles_geom = {}      # parcelle existante -> géométrie de l'entité du fichier qui l'a mise à jour
+
+        def _meme_trace(g1, g2):
+            """Deux tracés presque identiques (recouvrement ≥ seuil de la plus grande surface)."""
+            try:
+                return g1.intersection(g2).area / max(g1.area, g2.area) >= seuil
+            except Exception:
+                return False
+
+        def _doublon_fichier(g, nom_prod):
+            """Parcelle déjà créée par ce même fichier : même forme, ou même producteur et deux
+            tracés presque identiques (parcelle saisie deux fois). Une petite parcelle tracée à
+            l'intérieur d'une grande du même producteur reste une parcelle distincte."""
+            np_ = _enq.norm(nom_prod or "")
+            for (g2, np2, p2) in nouvelles:
+                if not g.intersects(g2):
+                    continue
+                if g.equals_exact(g2, 1e-9):
+                    return p2
+                try:
+                    r = g.intersection(g2).area / max(g.area, g2.area)
+                except Exception:
+                    continue
+                if np_ and np_ == np2 and r >= seuil:
+                    return p2
+            return None
+
+        # Parcelles existantes reconnues sans ambiguïté (même identifiant ou même tracé exact) :
+        # réservées à leur entité, pour qu'une entité voisine ne les prenne pas par recouvrement.
+        reservees = {}
+        for i_feat, feat in enumerate(features):
+            try:
+                g0 = shape(feat.get("geometry"))
+                if transformer:
+                    g0 = shp_transform(transformer, g0)
+                if g0.geom_type == "Polygon":
+                    g0 = MultiPolygon([g0])
+                sid0 = _enq.identifiant_source(feat.get("properties") or {})
+                pid0 = sources_exist.get(sid0) if sid0 else None
+                if pid0 is None:
+                    pid0 = sigs_existantes.get(_sig(g0))
+                if pid0 is not None:
+                    reservees.setdefault(pid0, i_feat)
+            except Exception:
+                continue
+
+        def _libre(pid, i_feat):
+            return reservees.get(pid, i_feat) == i_feat and pid not in cibles_vues
+
+        for i_feat, feat in enumerate(features):
             geom = feat.get("geometry")
             props = feat.get("properties", {}) or {}
             if not geom or geom.get("type") not in ("Polygon", "MultiPolygon"):
@@ -768,65 +925,160 @@ def importer():
                     g = shp_transform(transformer, g)
                 if g.geom_type == "Polygon":
                     g = MultiPolygon([g])
+                if g.is_empty:
+                    raise ValueError("géométrie vide")
             except Exception:
                 n_skip += 1
                 continue
 
             # --- Attributs (mappage tolérant, y compris noms tronqués QGIS) ---
-            code = _premier(props, ["code", "nom", "Nom"])
+            code = _premier(props, ["id_parcelle", "code", "nom", "Nom"])
             sig = _sig(g)
             if not code:
                 code = f"P-{sig[:8]}"
             code = str(code)[:50]
-            surface = (_f(_premier(props, ["surface_ha", "surface", "Superficie",
-                        "Superifie", "superficie", "Surface (ha)", "Surface"]))
-                       or _ha_depuis_wgs84(g))
-            culture = _culture_courante(props) or _premier(props, [
-                "Culture hi", "Culture actuelle", "culture", "Culture", "Culture _1"])
+            # Superficie = aire réelle du polygone. La superficie déclarée du fichier (souvent arrondie,
+            # parfois en m²) est conservée à part dans les informations d'enquête.
+            surface = (_ha_depuis_wgs84(g)
+                       or _f(_premier(props, ["superficie_ha", "superficie_declaree_ha", "surface_ha", "surface", "Superficie",
+                                              "Superifie", "superficie", "Surface (ha)", "Surface"])))
+            culture = _premier(props, ["culture", "Culture actuelle", "culture_campagne"])
+            if not culture:
+                an_cult, culture = _culture_annee(props)
+                # culture non renseignée pour la campagne en cours : culture par défaut du programme ;
+                # jamais la culture d'une année passée (c'est un précédent, pas la culture actuelle)
+                if an_cult is None or an_cult < _enq.annee_campagne(props, annee_active):
+                    culture = culture_defaut
+            culture = culture or culture_defaut or _premier(props, ["Culture hi", "Culture _1"])
             dep = _premier(props, ["Departement", "Département", "Departemen", "departement"])
             com = _premier(props, ["Commune", "commune"])
             vil = _premier(props, ["Village", "village", "Localité", "Localite"])
             reg = _premier(props, ["Region", "Région", "region"])
             observations = _premier(props, ["observations", "Observations"])
             nom_prod = _premier(props, [
-                "Prenom et nom producteur", "Nom & Prénom du producteur",
+                "producteur", "Prenom et nom producteur", "Prenom_nom_producteur", "Nom & Prénom du producteur",
                 "Prénom et nom producteur", "Nom et prenom producteur",
                 "Prenom_nom", "producteur", "Producteur"])
             tel_prod = _premier(props, [
-                "Telephone producteur", "Numero de telephone Producteur",
+                "telephone_producteur", "Telephone producteur", "Telephone_producteur", "Telephone du producteur", "Numero de telephone Producteur",
                 "Téléphone producteur", "Telephone_", "telephone"])
             nom_coop = _premier(props, [
-                "cooperative_norm", "Nom cooperative", "Nom cooper",
+                "op_cooperative", "cooperative_norm", "Nom cooperative", "Nom_cooperative", "Nom cooper",
                 "Coopérative", "Cooperative", "cooperative"])
             animateur = _premier(props, [
-                "Nom & Prénom de l'agent", "Nom & Prenom de l'agent",
+                "relais", "Nom & Prénom de l'agent", "Nom & Prenom de l'agent",
+                "Prenom_nom_relais", "Nom enquêteur", "Nom enqueteur",
                 "Prenom et nom enqueteur", "Prénom et nom enquêteur",
                 "Nom animateur", "animateur", "Animateur", "agent", "Agent",
                 "enqueteur", "Enquêteur"])
-            animateur = str(animateur).strip()[:120] if animateur else None
+            animateur = re.sub(r"\s+", " ", str(animateur)).strip()[:120] if animateur else None
+            if nom_prod:
+                nom_prod = re.sub(r"\s+", " ", str(nom_prod)).strip()
+            if tel_prod:
+                tel_prod = re.sub(r"\D", "", str(tel_prod))[-9:] or None
+                if tel_prod and len(tel_prod) < 9:
+                    tel_prod = None                     # « 77 », « 0 » : numéro incomplet
             sexe = _sexe(props)
+            prog_ent = _programme_entite(props)
+            fil_nom = _premier(props, ["filiere", "Filière"])
 
             # --- Détermination de la cible ---
-            cible = sigs_existantes.get(sig)     # correspondance exacte (même forme)
+            # 1) entité déjà importée (même couche + même fid) : correspondance certaine
+            src_id = _enq.identifiant_source(props)
+            pid_src = sources_exist.get(src_id) if src_id else None
+            cible = pid_src if pid_src is not None else sigs_existantes.get(sig)   # 2) même forme
             is_redraw = False
+            if pid_src is not None and geom_par_pid.get(pid_src) is not None:
+                is_redraw = not g.equals_exact(geom_par_pid[pid_src], 1e-6)
+            # 3) recouvrement géométrique
             if cible is None and mode == "maj" and tree is not None and g.area:
-                best_pid, best_r = None, 0.0
+                best_pid, best_r, best_cle = None, 0.0, None
                 for idx in tree.query(g):
+                    if not _libre(existants[int(idx)][0], i_feat):
+                        continue
                     cand = geoms_exist[int(idx)]
                     try:
                         r = g.intersection(cand).area / g.area
+                        # à recouvrement égal, on préfère la parcelle de taille la plus proche
+                        cle_tri = (round(r, 3), -abs(cand.area / g.area - 1))
                     except Exception:
                         continue
-                    if r > best_r:
-                        best_r, best_pid = r, existants[int(idx)][0]
+                    if best_cle is None or cle_tri > best_cle:
+                        best_r, best_pid, best_cle = r, existants[int(idx)][0], cle_tri
                 if best_pid is not None and best_r >= seuil:
                     cible, is_redraw = best_pid, True
+                elif nom_prod:
+                    # même producteur et forte inclusion (une forme contient l'autre)
+                    np_ = _enq_norm0(nom_prod)
+                    for idx in tree.query(g):
+                        pid_c, cand = existants[int(idx)]
+                        if prod_exist.get(pid_c) != np_ or not _libre(pid_c, i_feat):
+                            continue
+                        try:
+                            r = g.intersection(cand).area / min(g.area, cand.area)
+                        except Exception:
+                            continue
+                        if r >= seuil:
+                            cible, is_redraw = pid_c, not g.equals_exact(cand, 1e-9)
+                            break
+            # parcelle existante déjà prise par une entité du fichier : même producteur et même
+            # tracé → saisie en double (fusion) ; sinon l'entité sera une nouvelle parcelle
+            if cible is None and mode == "maj" and tree is not None and nom_prod:
+                np_f = _enq.norm(nom_prod)
+                for idx in tree.query(g):
+                    pid_c = existants[int(idx)][0]
+                    if cibles_vues.get(pid_c) == np_f and _meme_trace(g, cibles_geom.get(pid_c, geoms_exist[int(idx)])):
+                        cible = pid_c
+                        break
 
             try:
                 with db.session.begin_nested():
-                    region_obj = regions_par_nom.get(reg.strip().lower()) if reg else None
+                    region_obj = regions_par_nom.get(_enq.norm(reg)) if reg else None
 
+                    np_feat = _enq.norm(nom_prod or "")
+                    if pid_src is not None and cible in cibles_vues:
+                        # entité déjà fusionnée dans cette parcelle lors d'un import précédent
+                        doublon = db.session.get(Parcelle, cible)
+                        cible = -1
+                    elif cible is not None and mode == "maj" and cible in cibles_vues:
+                        g_cible = geom_par_pid.get(cible)
+                        g_prem = cibles_geom.get(cible)
+                        if (cibles_vues[cible] == np_feat and (g_prem is None or _meme_trace(g, g_prem))) or (
+                                g_cible is not None and g.equals_exact(g_cible, 1e-6)):
+                            # même producteur, même parcelle saisie deux fois : on ne redessine pas deux fois
+                            doublon = db.session.get(Parcelle, cible)
+                            cible = -1
+                        else:
+                            # autre producteur, ou même producteur avec un autre tracé : parcelle
+                            # distincte (ex. une ancienne grande parcelle redécoupée). On cherche sa propre
+                            # parcelle existante (même producteur), sinon on la crée.
+                            cible = None
+                            for idx in tree.query(g) if tree is not None else []:
+                                pid_c, cand = existants[int(idx)]
+                                if pid_c in cibles_vues or prod_exist.get(pid_c) != np_feat:
+                                    continue
+                                try:
+                                    r = g.intersection(cand).area / min(g.area, cand.area)
+                                except Exception:
+                                    continue
+                                if r >= seuil:
+                                    cible, is_redraw = pid_c, not g.equals_exact(cand, 1e-9)
+                                    cibles_vues[cible] = np_feat
+                                    cibles_geom[cible] = g
+                                    break
                     if cible is None:
+                        doublon = _doublon_fichier(g, nom_prod)
+                    elif cible != -1:
+                        doublon = None
+                        cibles_vues[cible] = np_feat
+                        cibles_geom.setdefault(cible, g)
+                    if doublon is not None:
+                        # ----- même parcelle saisie deux fois dans le fichier -----
+                        _historique(doublon, props, culture or doublon.culture)
+                        _enquete(doublon, props, culture or doublon.culture)
+                        n_dup_fichier += 1
+
+                    elif cible is None:
                         # ----- CRÉATION -----
                         if code in codes_existants:
                             base, k = code, 1
@@ -842,15 +1094,20 @@ def importer():
                                      geom=WKTElement(g.wkt, srid=4326))
                         if region_obj:
                             p.region_id = region_obj.id
-                        if programme_id:
-                            p.programme_id = programme_id
+                        fil = (_enq.filiere_nommee(fil_nom, cache_filieres) if fil_nom
+                               else _enq.filiere_pour(culture, cache_filieres))
+                        if fil:
+                            p.filiere_id = fil.id
+                        if prog_ent:
+                            p.programme_id = prog_ent
                         if camp_active:
                             p.campagne_id = camp_active.id
                         if prod:
                             p.producteur = prod
                         db.session.add(p)
-                        _historique(p, props)
-                        sigs_existantes[sig] = None
+                        _historique(p, props, culture)
+                        _enquete(p, props, culture)
+                        nouvelles.append((g, _enq.norm(nom_prod or ""), p))
                         codes_existants.add(code)
                         n_new += 1
 
@@ -858,10 +1115,26 @@ def importer():
                         # ----- doublon (forme identique) : on complète seulement -----
                         p = db.session.get(Parcelle, cible)
                         if p:
+                            # parcelle déjà connue : on complète ce qui manque, sans rien écraser
                             if animateur and not p.animateur:
                                 p.animateur = animateur
-                            if programme_id and not p.programme_id:
-                                p.programme_id = programme_id
+                            if prog_ent and not p.programme_id:
+                                p.programme_id = prog_ent
+                            if not p.producteur_id and nom_prod:
+                                prod, org = _prod_coop(nom_coop, nom_prod, tel_prod, sexe, region_obj)
+                                if prod:
+                                    p.producteur = prod
+                            if culture and not p.culture:
+                                p.culture = culture
+                            if not p.surface_ha and surface:
+                                p.surface_ha = surface
+                            if not p.filiere_id:
+                                fil = (_enq.filiere_nommee(fil_nom, cache_filieres) if fil_nom
+                                       else _enq.filiere_pour(p.culture, cache_filieres))
+                                if fil:
+                                    p.filiere_id = fil.id
+                            _historique(p, props, culture or p.culture)
+                            _enquete(p, props, culture or p.culture)
                         n_dup += 1
 
                     else:
@@ -873,6 +1146,10 @@ def importer():
                                 p.geom = WKTElement(g.wkt, srid=4326)
                             if culture:
                                 p.culture = culture
+                            fil = (_enq.filiere_nommee(fil_nom, cache_filieres) if fil_nom
+                                   else _enq.filiere_pour(culture, cache_filieres))
+                            if fil:
+                                p.filiere_id = fil.id
                             if surface:
                                 p.surface_ha = surface
                             if dep:
@@ -883,12 +1160,14 @@ def importer():
                                 p.village = vil.strip()
                             if region_obj:
                                 p.region_id = region_obj.id
-                            if programme_id:
-                                p.programme_id = programme_id
+                            if prog_ent:
+                                p.programme_id = prog_ent
                             if animateur:
                                 p.animateur = animateur
                             if prod:
                                 p.producteur = prod
+                            _historique(p, props, culture or p.culture)
+                            _enquete(p, props, culture or p.culture)
                             if is_redraw:
                                 n_redraw += 1
                             else:
@@ -896,25 +1175,156 @@ def importer():
             except Exception:
                 n_skip += 1
 
+        # Synchronisation : parcelles du ou des programmes du fichier qui n'y figurent plus
+        n_suppr = n_gardees = 0
+        if request.form.get("supprimer_absentes") and mode == "maj" and touchees and progs_fichier:
+            db.session.flush()
+            absentes = [pid for (pid,) in db.session.query(Parcelle.id).filter(
+                Parcelle.programme_id.in_(progs_fichier), ~Parcelle.id.in_(touchees))]
+            if absentes:
+                avec_suivi = {pid for (pid,) in db.session.execute(text(
+                    "SELECT DISTINCT parcelle_id FROM suivis_terrain WHERE parcelle_id = ANY(:ids)"), {"ids": absentes})}
+                a_supprimer = [pid for pid in absentes if pid not in avec_suivi]
+                n_gardees = len(avec_suivi)
+                if a_supprimer:
+                    db.session.execute(text("DELETE FROM parcelles WHERE id = ANY(:ids)"), {"ids": a_supprimer})
+                n_suppr = len(a_supprimer)
+        msg_sync = ""
+        if request.form.get("supprimer_absentes") and mode == "maj":
+            msg_sync = (f" Synchronisation : {n_suppr} parcelle(s) du programme absente(s) du fichier "
+                        + ("à supprimer" if apercu else "supprimée(s)")
+                        + (f", {n_gardees} conservée(s) car elles ont des visites de terrain" if n_gardees else "") + ".")
+
         if apercu:
             db.session.rollback()
             flash(f"APERÇU (aucune écriture) — mode « {mode} » : "
                   f"{n_new} à créer, {n_upd} attribut(s) à mettre à jour, "
                   f"{n_redraw} redessinée(s) détectée(s), {n_dup} inchangée(s) (doublon), "
-                  f"{n_skip} en erreur. Décochez « aperçu » pour appliquer.", "info")
+                  f"{n_skip} en erreur, {n_dup_fichier} doublon(s) dans le fichier ; "
+                  f"{n_prat} fiche(s) de pratiques, {n_rdt} rendement(s) mesuré(s).{msg_sync} Décochez « aperçu » pour appliquer.", "info")
             return redirect(url_for("parcelles.importer"))
 
         db.session.commit()
+
+        # Rendement potentiel des nouvelles parcelles : valeur la plus fréquente du même
+        # programme et de la même culture (sinon la valeur par défaut du module Rendement).
+        n_pot = 0
+        try:
+            from app.referentiel.service import appliquer_potentiels
+            sans_pot = [pid_ for (pid_,) in db.session.query(Parcelle.id)
+                        .filter(Parcelle.rendement_potentiel.is_(None))]
+            if sans_pot:
+                s_pot = appliquer_potentiels(sans_pot)
+                n_pot += s_pot["variete"] + s_pot["speculation"]
+        except Exception:
+            db.session.rollback()     # référentiel pas encore installé
+        if programme_id:
+            from sqlalchemy import text as _text
+            n_pot += db.session.execute(_text("""
+                UPDATE parcelles p SET rendement_potentiel = m.pot
+                  FROM (SELECT culture, mode() WITHIN GROUP (ORDER BY rendement_potentiel) AS pot
+                          FROM parcelles WHERE programme_id = :pg AND rendement_potentiel IS NOT NULL
+                         GROUP BY culture) m
+                 WHERE p.programme_id = :pg AND p.culture = m.culture AND p.rendement_potentiel IS NULL
+            """), {"pg": programme_id}).rowcount
+            db.session.commit()
+
+        from flask import current_app
+        msg_indices = ""
+        if (n_new or n_redraw) and current_app.config.get("GEE_PROJECT") and not current_app.testing:
+            try:
+                from app.teledetection import series as _series
+                if _series.lancer_en_arriere_plan():
+                    msg_indices = (" Indices de végétation depuis le 15 mai en cours de calcul en arrière-plan "
+                                   "pour les nouvelles parcelles (Télédétection → Calcul des indices).")
+            except Exception:
+                pass
         flash(f"Import « {mode} » : {n_new} créée(s), {n_upd} mise(s) à jour, "
-              f"{n_redraw} redessinée(s), {n_dup} inchangée(s), {n_skip} en erreur."
-              + (f" Programme « {prog_nom} » appliqué." if prog_nom else ""), "success")
+              f"{n_redraw} redessinée(s), {n_dup} inchangée(s), {n_skip} en erreur, "
+              f"{n_dup_fichier} doublon(s) dans le fichier fusionné(s) ; "
+              f"{n_prat} fiche(s) de pratiques, {n_rdt} rendement(s) mesuré(s) ajoutés aux références."
+              + (f" Programme « {prog_nom} » appliqué." if prog_nom else "")
+              + (f" Rendement potentiel attribué à {n_pot} nouvelle(s) parcelle(s)." if n_pot else "")
+              + (f" {n_indices} valeur(s) d'indices de végétation reprises du fichier." if n_indices else "")
+              + msg_sync + msg_indices, "success")
         return redirect(url_for("parcelles.carte"))
 
     programmes = Programme.query.order_by(Programme.nom).all()
-    return render_template("parcelles/import.html", programmes=programmes)
+    from app.parcelles.modele import CHAMPS
+    return render_template("parcelles/import.html", programmes=programmes, champs_modele=CHAMPS)
+
+
+@parcelles_bp.route("/export/complet.geojson")
+@login_required
+def export_complet():
+    """Toutes les parcelles du périmètre, avec toutes leurs données, au format du modèle ANCAR :
+    le fichier se réimporte tel quel (mode « Mise à jour ») sur une autre plateforme."""
+    from flask import Response
+    from app.parcelles.export_complet import geojson_complet
+    from app.scoping import parcelle_ids
+    if current_user.niveau < 3:
+        flash("Export réservé à l'encadrement.", "warning")
+        return redirect(url_for("parcelles.liste"))
+    avec_indices = request.args.get("indices", "1") != "0"
+    data = geojson_complet(pids=parcelle_ids(current_user), avec_indices=avec_indices,
+                           programme_id=request.args.get("programme", type=int))
+    from datetime import date as _d
+    nom = f"parcelles_ANCAR_complet_{_d.today():%Y%m%d}.geojson"
+    return Response(json.dumps(data, ensure_ascii=False, default=str), mimetype="application/geo+json",
+                    headers={"Content-Disposition": f"attachment; filename={nom}"})
+
+
+@parcelles_bp.route("/import/modele.geojson")
+@login_required
+def modele_geojson():
+    """Modèle GeoJSON des parcelles : tous les champs reconnus, deux parcelles d'exemple."""
+    from flask import Response
+    from app.parcelles.modele import geojson_modele
+    return Response(json.dumps(geojson_modele(), ensure_ascii=False, indent=1),
+                    mimetype="application/geo+json",
+                    headers={"Content-Disposition": "attachment; filename=modele_parcelles_ANCAR.geojson"})
 
 
 _ANNEE_RE = re.compile(r"(20\d{2})")
+
+
+@parcelles_bp.app_context_processor
+def _ctx_enquete():
+    """Données d'enquête pour la fiche parcelle. Si les tables n'existent pas encore
+    (init_enquete.py pas lancé), la fiche s'affiche sans ce bloc au lieu de planter."""
+    def _sur(requete):
+        try:
+            with db.session.begin_nested():
+                return requete()
+        except Exception:
+            return []
+
+    def enquete_attributs(pid):
+        from app.models.enquete import AttributParcelle
+        return _sur(lambda: db.session.query(AttributParcelle).filter_by(parcelle_id=pid)
+                    .order_by(AttributParcelle.cle).all())
+
+    def enquete_pratiques(pid):
+        from app.models.enquete import PratiqueCampagne
+        return _sur(lambda: db.session.query(PratiqueCampagne).filter_by(parcelle_id=pid)
+                    .order_by(PratiqueCampagne.annee.desc()).all())
+    return {"enquete_attributs": enquete_attributs, "enquete_pratiques": enquete_pratiques}
+
+
+def _enq_norm0(s):
+    from app.parcelles.enquete import norm
+    return norm(s)
+
+
+def _culture_annee(props):
+    """(année, culture) la plus récente parmi les propriétés 'culture ... AAAA' renseignées."""
+    best_year, best = None, None
+    for k, v in props.items():
+        if v and "culture" in k.lower() and str(v).strip().lower() not in ("none", "null"):
+            m = _ANNEE_RE.search(k)
+            if m and (best_year is None or int(m.group(1)) > best_year):
+                best_year, best = int(m.group(1)), str(v).strip()
+    return best_year, best
 
 
 def _culture_courante(props):
@@ -929,7 +1339,7 @@ def _culture_courante(props):
 
 
 def _sexe(props):
-    v = _premier(props, ["Sexe", "Genre (Homme/Femme)", "sexe", "genre"])
+    v = _premier(props, ["sexe_producteur", "Sexe", "Sexe_ producteur", "Genre (Homme/Femme)", "genre"])
     if not v:
         return None
     v = str(v).strip().upper()
@@ -1010,6 +1420,101 @@ def import_historique():
         return redirect(url_for("parcelles.liste"))
 
     return render_template("parcelles/import_historique.html")
+
+
+@parcelles_bp.route("/localisation-villages", methods=["GET", "POST"])
+@login_required
+@niveau_minimum(4)
+def localisation_villages():
+    """Renseigne commune, département, région et organisation par village, pour un programme
+    dont le fichier ne contient que le village (ex. AMPK maraîchage)."""
+    from sqlalchemy import func as _func
+    from app.parcelles import enquete as _enq
+    from app.models.programme import Programme
+
+    programmes = Programme.query.order_by(Programme.nom).all()
+    prog_id = request.values.get("programme", type=int)
+    if prog_id is None and programmes:
+        # par défaut : le programme qui a le plus de parcelles sans commune
+        row = (db.session.query(Parcelle.programme_id, _func.count())
+               .filter(Parcelle.programme_id.isnot(None), Parcelle.commune.is_(None))
+               .group_by(Parcelle.programme_id).order_by(_func.count().desc()).first())
+        prog_id = row[0] if row else programmes[0].id
+    regions = Region.query.order_by(Region.nom).all()
+    reg_par_id = {r.id: r for r in regions}
+
+    if request.method == "POST":
+        seulement_vides = request.form.get("seulement_vides") == "on"
+        n_parc = n_prod = 0
+        orgs = {_enq.norm(o.nom): o for o in OrganisationProducteur.query.all()}
+        for i in range(int(request.form.get("n", 0))):
+            village = request.form.get(f"village_{i}")
+            commune = (request.form.get(f"commune_{i}") or "").strip() or None
+            dep = (request.form.get(f"departement_{i}") or "").strip() or None
+            reg_id = request.form.get(f"region_{i}", type=int)
+            org_nom = (request.form.get(f"organisation_{i}") or "").strip() or None
+            if not any([commune, dep, reg_id, org_nom]):
+                continue
+            q = Parcelle.query.filter(Parcelle.programme_id == prog_id)
+            q = q.filter(Parcelle.village.is_(None)) if village == "" else q.filter(Parcelle.village == village)
+            if seulement_vides:
+                q = q.filter(Parcelle.commune.is_(None))
+            org = None
+            if org_nom:
+                org = orgs.get(_enq.norm(org_nom))
+                if org is None:
+                    org = OrganisationProducteur(nom=org_nom[:150], type="Organisation", region_id=reg_id)
+                    db.session.add(org)
+                    db.session.flush()
+                    orgs[_enq.norm(org_nom)] = org
+            for p in q.all():
+                if commune:
+                    p.commune = commune
+                if dep:
+                    p.departement = dep
+                if reg_id:
+                    p.region_id = reg_id
+                n_parc += 1
+                prod = p.producteur
+                if prod is not None:
+                    if org is not None and prod.organisation_id is None:
+                        prod.organisation_id = org.id
+                        n_prod += 1
+                    if reg_id and getattr(prod, "region_id", None) is None:
+                        prod.region_id = reg_id
+        db.session.commit()
+        flash(f"Localisation appliquée à {n_parc} parcelle(s) ; {n_prod} producteur(s) rattaché(s) "
+              f"à une organisation. Pensez à relancer le rattachement Sol et la grille Climat si besoin.",
+              "success")
+        return redirect(url_for("parcelles.localisation_villages", programme=prog_id))
+
+    # Villages du programme, avec la localisation déjà connue ailleurs pour un village du même nom
+    villages = (db.session.query(_func.coalesce(Parcelle.village, ""), _func.count(),
+                                 _func.count(Parcelle.commune))
+                .filter(Parcelle.programme_id == prog_id)
+                .group_by(_func.coalesce(Parcelle.village, ""))
+                .order_by(_func.count().desc()).all()) if prog_id else []
+    connus = {}
+    for vil, com, dep, rid in (db.session.query(Parcelle.village, Parcelle.commune,
+                                                Parcelle.departement, Parcelle.region_id)
+                               .filter(Parcelle.village.isnot(None), Parcelle.commune.isnot(None))
+                               .distinct().all()):
+        connus.setdefault(_enq.norm(vil), (com, dep, rid))
+    lignes = []
+    for vil, n, n_loc in villages:
+        com, dep, rid = connus.get(_enq.norm(vil), (None, None, None)) if vil else (None, None, None)
+        org = (db.session.query(OrganisationProducteur.nom)
+               .join(Producteur, Producteur.organisation_id == OrganisationProducteur.id)
+               .join(Parcelle, Parcelle.producteur_id == Producteur.id)
+               .filter(Parcelle.programme_id == prog_id,
+                       (Parcelle.village == vil) if vil else Parcelle.village.is_(None))
+               .group_by(OrganisationProducteur.nom).order_by(_func.count().desc()).first())
+        lignes.append({"village": vil, "n": n, "n_loc": n_loc, "commune": com, "departement": dep,
+                       "region_id": rid, "organisation": org[0] if org else None})
+    return render_template("parcelles/localisation_villages.html", programmes=programmes,
+                           prog_id=prog_id, regions=regions, lignes=lignes,
+                           organisations=[o.nom for o in OrganisationProducteur.query
+                                          .order_by(OrganisationProducteur.nom).all()])
 
 
 @parcelles_bp.route("/geo/import", methods=["GET", "POST"])

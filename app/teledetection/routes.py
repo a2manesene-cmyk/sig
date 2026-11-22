@@ -15,6 +15,7 @@ from app.models.indice import IndiceVegetation
 from app.auth.decorators import niveau_minimum
 from .gee import compute_indices, compute_timeseries, difference_tiles, index_tiles
 from .interpretation import INDICES_INFO, ORDRE
+from . import series
 
 teledetection_bp = Blueprint("teledetection", __name__, url_prefix="/teledetection")
 
@@ -199,7 +200,7 @@ def comparaison():
 @niveau_minimum(3)
 def calculer():
     if request.method == "POST":
-        d1 = request.form.get("date_debut") or "2026-05-15"
+        d1 = request.form.get("date_debut") or series.debut_campagne().isoformat()
         d2 = request.form.get("date_fin")
         region_id = request.form.get("region") or None
         serie = request.form.get("serie")   # "on" -> évolution à chaque passage
@@ -229,49 +230,21 @@ def calculer():
             flash("GEE_PROJECT n'est pas défini dans config.py.", "danger")
             return redirect(url_for("teledetection.calculer"))
 
-        # ── Mode ÉVOLUTION : un point par passage du satellite ──
+        # ── Mode ÉVOLUTION : un point par passage du satellite, en arrière-plan ──
+        # (des milliers de parcelles sur plusieurs mois dépassent le délai d'une page web)
         if serie:
-            try:
-                lignes = compute_timeseries(features, d1, d2, project)
-            except Exception as exc:
-                flash(f"Erreur Earth Engine : {exc}", "danger")
-                return redirect(url_for("teledetection.calculer"))
-
-            # Upsert par (parcelle, date d'acquisition)
             try:
                 d1d = datetime.strptime(d1, "%Y-%m-%d").date()
             except (TypeError, ValueError):
-                d1d = date(date_fin.year, 5, 15)
-            existants = {
-                (iv.parcelle_id, iv.date.isoformat()): iv
-                for iv in IndiceVegetation.query.filter(
-                    IndiceVegetation.date >= d1d,
-                    IndiceVegetation.date <= date_fin).all()
-            }
-            n, dates = 0, set()
-            for r in lignes:
-                pid, ds = r.get("pid"), r.get("date")
-                if pid is None or not ds:
-                    continue
-                try:
-                    dobj = datetime.strptime(ds, "%Y-%m-%d").date()
-                except ValueError:
-                    continue
-                key = (pid, ds)
-                iv = existants.get(key)
-                if not iv:
-                    iv = IndiceVegetation(parcelle_id=pid, date=dobj)
-                    db.session.add(iv)
-                    existants[key] = iv
-                iv.ndvi = r.get("ndvi"); iv.ndwi = r.get("ndwi")
-                iv.ndmi = r.get("ndmi"); iv.savi = r.get("savi"); iv.evi = r.get("evi")
-                iv.source = "GEE Sentinel-2"
-                n += 1
-                dates.add(ds)
-            db.session.commit()
-            flash(f"Évolution calculée : {n} relevé(s) sur {len(dates)} passage(s) "
-                  f"du satellite (du {d1} au {date_fin}).", "success")
-            return redirect(url_for("teledetection.carte"))
+                d1d = series.debut_campagne()
+            tout = request.form.get("recalculer") == "on"
+            if series.lancer_en_arriere_plan(tout=tout, debut=d1d):
+                flash("Calcul des indices à chaque passage du satellite lancé en arrière-plan "
+                      f"(depuis le {d1d:%d/%m/%Y}). Vous pouvez quitter la page : l'avancement s'affiche ci-dessous.",
+                      "success")
+            else:
+                flash("Un calcul est déjà en cours.", "warning")
+            return redirect(url_for("teledetection.calculer"))
 
         # ── Mode SNAPSHOT : une valeur (médiane) à la date de fin ──
         try:
@@ -300,10 +273,11 @@ def calculer():
             iv.ndmi = r.get("ndmi")
             iv.savi = r.get("savi")
             iv.evi = r.get("evi")
-            iv.source = "GEE Sentinel-2"
+            iv.source = series.SOURCE_INSTANTANE
             n += 1
         db.session.commit()
-        flash(f"Calcul terminé : {n} parcelle(s) mises à jour pour le {date_fin}.", "success")
+        flash(f"Calcul terminé : {n} parcelle(s) mises à jour pour le {date_fin} (composite de la période, "
+              "pas une série par passage).", "success")
         return redirect(url_for("teledetection.carte"))
 
     calculs = (
@@ -312,9 +286,13 @@ def calculer():
         .order_by(IndiceVegetation.date.desc())
         .all()
     )
+    st = series.statut()
+    journal = series.lire_journal()
     return render_template(
         "teledetection/calculer.html",
         regions=Region.query.order_by(Region.nom).all(),
         aujourdhui=date.today().isoformat(),
-        calculs=calculs,
+        calculs=calculs[:40],
+        statut=st, journal=journal, couverture=series.couverture(),
+        debut_campagne=series.debut_campagne().isoformat(),
     )

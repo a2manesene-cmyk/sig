@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Localisation par village — ANCAR SIG{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+  <h3 class="ancar-title mb-0">Localisation par village</h3>
+  <form method="get" class="d-flex gap-2 align-items-center">
+    <label class="small text-muted">Programme</label>
+    <select name="programme" class="form-select form-select-sm" onchange="this.form.submit()">
+      {% for pr in programmes %}<option value="{{ pr.id }}" {{ 'selected' if pr.id == prog_id }}>{{ pr.nom }}</option>{% endfor %}
+    </select>
+  </form>
+</div>
+<p class="small text-muted">Pour les fichiers qui ne contiennent que le village (ex. AMPK maraîchage) : renseignez une fois la commune, le département,
+  la région et l'organisation de chaque village ; toutes les parcelles du village sont mises à jour.
+  La commune et le département sont indispensables pour que le CAR et le CDCAR voient les parcelles.
+  Les valeurs proposées viennent des autres parcelles du même village déjà localisées.</p>
+
+<form method="post">
+  <input type="hidden" name="programme" value="{{ prog_id }}">
+  <input type="hidden" name="n" value="{{ lignes|length }}">
+  <div class="card border-0 shadow-sm"><div class="card-body p-0"><div class="table-responsive">
+  <table class="table table-sm align-middle mb-0 small">
+    <thead class="table-light"><tr><th>Village</th><th class="text-end">Parcelles</th><th class="text-end">Déjà localisées</th>
+      <th>Commune</th><th>Département</th><th>Région</th><th>Organisation (OP)</th></tr></thead>
+    <tbody>
+    {% for l in lignes %}
+      <tr>
+        <td><input type="hidden" name="village_{{ loop.index0 }}" value="{{ l.village }}">{{ l.village or '(sans village)' }}</td>
+        <td class="text-end">{{ l.n }}</td>
+        <td class="text-end">{% if l.n_loc == l.n %}<span class="badge bg-success">{{ l.n_loc }}</span>{% elif l.n_loc %}<span class="badge bg-warning text-dark">{{ l.n_loc }}</span>{% else %}<span class="badge bg-light text-dark border">0</span>{% endif %}</td>
+        <td><input name="commune_{{ loop.index0 }}" value="{{ l.commune or '' }}" class="form-control form-control-sm" placeholder="Commune"></td>
+        <td><input name="departement_{{ loop.index0 }}" value="{{ l.departement or '' }}" class="form-control form-control-sm" placeholder="Département"></td>
+        <td><select name="region_{{ loop.index0 }}" class="form-select form-select-sm"><option value="">—</option>
+          {% for r in regions %}<option value="{{ r.id }}" {{ 'selected' if r.id == l.region_id }}>{{ r.nom }}</option>{% endfor %}</select></td>
+        <td><input name="organisation_{{ loop.index0 }}" value="{{ l.organisation or '' }}" list="liste_orgs" class="form-control form-control-sm" placeholder="Nom de l'OP (créée si absente)"></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="7" class="text-center text-muted py-4">Aucune parcelle pour ce programme.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div></div></div>
+  <datalist id="liste_orgs">{% for o in organisations %}<option value="{{ o }}">{% endfor %}</datalist>
+  <div class="d-flex flex-wrap gap-3 align-items-center mt-3">
+    <button class="btn ancar-btn btn-sm"><i class="bi bi-geo-alt"></i> Appliquer</button>
+    <label class="small"><input type="checkbox" name="seulement_vides" class="form-check-input"> Ne modifier que les parcelles sans commune</label>
+    <a href="{{ url_for('parcelles.liste') }}" class="btn btn-outline-secondary btn-sm">Retour aux parcelles</a>
+  </div>
+  <p class="form-text">L'organisation n'est attribuée qu'aux producteurs qui n'en ont pas encore. Une ligne laissée vide n'est pas modifiée.</p>
+</form>
+{% endblock %}

@@ -2,8 +2,11 @@
 {% block title %}Import GeoJSON — ANCAR{% endblock %}
 
 {% block content %}
-<div class="row justify-content-center"><div class="col-lg-7">
-  <h3 class="ancar-title mb-3">Importer des parcelles (GeoJSON)</h3>
+<div class="row justify-content-center"><div class="col-lg-9">
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <h3 class="ancar-title mb-0">Importer des parcelles (GeoJSON)</h3>
+    <a href="{{ url_for('parcelles.modele_geojson') }}" class="btn btn-outline-success btn-sm"><i class="bi bi-download"></i> Modèle GeoJSON ANCAR</a>
+  </div>
   <div class="card border-0 shadow-sm"><div class="card-body">
   <form method="POST" enctype="multipart/form-data">
     <div class="mb-3">
@@ -17,7 +20,7 @@
         <option value="32629">UTM zone 29N — Sénégal Est (EPSG:32629)</option>
         <option value="4326">WGS 84 — déjà en lat/long (EPSG:4326)</option>
       </select>
-      <div class="form-text">Les géométries sont reprojetées en WGS 84 (EPSG:4326) pour le stockage PostGIS.</div>
+      <div class="form-text">Utilisé seulement si le fichier ne déclare pas son système (le système déclaré dans le fichier est appliqué automatiquement). Les géométries sont stockées en WGS 84.</div>
     </div>
     <div class="mb-3">
       <label class="form-label">Programme / projet</label>
@@ -27,6 +30,12 @@
         {% for pr in programmes %}<option value="{{ pr.nom }}">{% endfor %}
       </datalist>
       <div class="form-text">Choisissez un programme existant ou saisissez un nouveau nom : il sera créé automatiquement et rattaché aux parcelles importées.</div>
+    </div>
+    <div class="mb-3">
+      <label class="form-label">Culture par défaut <span class="text-muted small">(facultatif)</span></label>
+      <input type="text" name="culture_defaut" class="form-control" placeholder="Ex. Maïs" list="liste_cultures" autocomplete="off">
+      <datalist id="liste_cultures"><option value="Maïs"><option value="Mil"><option value="Arachide"><option value="Sorgho"><option value="Riz"></datalist>
+      <div class="form-text">Appliquée aux parcelles dont la culture de la campagne en cours n'est pas renseignée dans le fichier (ex. « Maïs » pour le Grenier du maïs). Les fichiers de maraîchage avec « Culture actuelle » n'en ont pas besoin.</div>
     </div>
     <div class="mb-3">
       <label class="form-label">Mode d'import</label>
@@ -40,6 +49,12 @@
       <input type="number" name="seuil_overlap" class="form-control" value="60" min="10" max="100">
       <div class="form-text">En mode mise à jour, une parcelle du fichier qui recouvre une parcelle existante au-delà de ce seuil est considérée comme la même (redessinée).</div>
     </div>
+    <div class="form-check mb-3" id="blocSync" style="display:none">
+      <input class="form-check-input" type="checkbox" name="supprimer_absentes" id="supprimer_absentes">
+      <label class="form-check-label" for="supprimer_absentes"><b>Synchroniser avec le fichier</b> — supprime les parcelles du programme qui ne figurent plus
+        dans le fichier (doublons retirés, parcelles abandonnées), pour que la plateforme contienne exactement les parcelles du fichier.
+        Les parcelles ayant des visites de terrain sont conservées. Faites d'abord un aperçu.</label>
+    </div>
     <div class="form-check mb-3">
       <input class="form-check-input" type="checkbox" name="apercu" id="apercu" checked>
       <label class="form-check-label" for="apercu"><b>Aperçu (simulation)</b> — affiche ce qui serait fait, sans rien écrire. Décochez pour appliquer réellement.</label>
@@ -48,15 +63,28 @@
     <script>
       document.getElementById('modeImport').addEventListener('change', function(){
         document.getElementById('blocSeuil').style.display = (this.value==='maj') ? '' : 'none';
+        document.getElementById('blocSync').style.display = (this.value==='maj') ? '' : 'none';
       });
     </script>
     <a href="{{ url_for('parcelles.liste') }}" class="btn btn-outline-secondary">Annuler</a>
   </form>
-  <p class="text-muted small mt-3">
-    <i class="bi bi-info-circle"></i>
-    Propriétés reconnues : <code>code</code> (ou <code>nom</code>), <code>culture</code>,
-    <code>surface_ha</code>. La surface est calculée automatiquement si elle est absente.
-  </p>
+  </div></div>
+
+  <div class="card border-0 shadow-sm mt-3"><div class="card-body">
+    <h6><i class="bi bi-table text-success"></i> Modèle GeoJSON ANCAR — champs reconnus</h6>
+    <p class="small text-muted">Un fichier dont les colonnes portent ces noms s'importe sans aucune adaptation : parcelle, producteur, OP, relais,
+      historique cultural, pratiques et rendement de la campagne. Majuscules et accents sont ignorés ; les colonnes inconnues sont
+      conservées dans « Autres informations d'enquête ». Les numéros de CNI ne sont jamais enregistrés. La superficie est calculée à partir du polygone.
+      <a href="{{ url_for('parcelles.modele_geojson') }}">Télécharger le modèle</a> (deux parcelles d'exemple, à ouvrir dans QGIS ou à reproduire dans le formulaire QField / KoBo).</p>
+    <div class="table-responsive"><table class="table table-sm small align-middle mb-0">
+      <thead class="table-light"><tr><th>Champ</th><th>Rubrique</th><th>Type</th><th>Exemple</th><th>Description</th></tr></thead>
+      {% for nom, rub, obl, typ, ex, desc in champs_modele %}
+      <tr><td class="text-nowrap"><code>{{ nom }}</code>{% if obl %} <span class="text-danger" title="Fortement recommandé">*</span>{% endif %}</td>
+        <td>{{ rub }}</td><td class="text-nowrap">{{ typ }}</td><td class="text-nowrap">{{ ex if ex is not none else '' }}</td><td class="text-muted">{{ desc }}</td></tr>
+      {% endfor %}
+    </table></div>
+    <div class="small text-muted mt-2"><span class="text-danger">*</span> fortement recommandé. Les anciens noms (Prenom_nom_producteur, Nom cooperative,
+      Prenom_nom_relais, Culture hivernale 2026, Derniere culture hivernale 2025…) restent reconnus.</div>
   </div></div>
 </div></div>
 {% endblock %}

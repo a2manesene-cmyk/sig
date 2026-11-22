@@ -10,5 +10,5 @@ pyproj>=3.7.2
 openpyxl>=3.1.5
 earthengine-api>=1.1.5
 Werkzeug==3.0.4
-
-
+lxml>=4.9
+Pillow>=10.0

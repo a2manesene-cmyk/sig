@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Climat — ANCAR SIG{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+  <h3 class="ancar-title mb-0">Saison des pluies {{ annee }}</h3>
+  <div class="d-flex gap-2 align-items-center">
+    <form method="get">
+      <select name="annee" class="form-select form-select-sm" onchange="this.form.submit()">
+        {% for a in annees %}<option {{ 'selected' if a == annee }}>{{ a }}</option>{% endfor %}
+        {% if not annees %}<option>{{ annee }}</option>{% endif %}
+      </select>
+    </form>
+    {% if current_user.niveau >= 4 %}
+    <a href="{{ url_for('climat.importer') }}" class="btn ancar-btn btn-sm"><i class="bi bi-cloud-download"></i> Données climatiques</a>
+    {% endif %}
+  </div>
+</div>
+
+{% if not couv.fin %}
+<div class="alert alert-warning small"><i class="bi bi-info-circle"></i>
+  Aucune donnée climatique importée.
+  {% if current_user.niveau >= 4 %}<a href="{{ url_for('climat.importer') }}">Importer depuis Earth Engine</a>.{% else %}Contactez l'administrateur.{% endif %}
+</div>
+{% else %}
+<p class="small text-muted mb-3">
+  Pluie CHIRPS et températures ERA5-Land (Earth Engine), grille de 5 km. Données du {{ couv.debut.strftime('%d/%m/%Y') }} au {{ couv.fin.strftime('%d/%m/%Y') }}.
+  Moyenne de référence : saisons complètes des autres années disponibles ({{ couv.annees|first }}–{{ couv.annees|last }}).
+</p>
+{% endif %}
+
+<div class="card border-0 shadow-sm"><div class="card-body p-0"><div class="table-responsive">
+<table class="table table-hover table-sm mb-0 align-middle small">
+  <thead class="table-light"><tr>
+    <th>Département</th><th>Commune</th><th class="text-end">Parcelles</th>
+    <th>Démarrage</th><th>Fin</th><th class="text-end">Longueur (j)</th>
+    <th class="text-end">Cumul mai–oct. (mm)</th><th class="text-end">Écart / moyenne</th>
+    <th class="text-end">Séq. sèche max (j)</th><th class="text-end">Faux départs</th></tr></thead>
+  <tbody>
+  {% for l in lignes %}
+    <tr>
+      <td>{{ l.dep or '—' }}</td><td>{{ l.commune }}</td><td class="text-end">{{ l.n }}</td>
+      {% if l.s %}
+      <td>{{ l.s.debut|jour_mois }}
+        {% if l.s.ecart_debut is not none and l.s.ecart_debut|abs >= 7 %}
+        <span class="badge bg-{{ 'warning text-dark' if l.s.ecart_debut > 0 else 'info' }}">{{ '+' if l.s.ecart_debut > 0 }}{{ l.s.ecart_debut|round|int }} j</span>{% endif %}</td>
+      <td>{% if l.s.fin %}{{ l.s.fin|jour_mois }}{% else %}<span class="text-muted">en cours</span>{% endif %}</td>
+      <td class="text-end">{{ l.s.longueur|round|int if l.s.longueur is not none else '—' }}</td>
+      <td class="text-end">{{ '%.0f'|format(l.s.cumul) if l.s.cumul is not none else '—' }}</td>
+      <td class="text-end">{% if l.s.ecart is not none %}
+        <span class="badge bg-{{ 'danger' if l.s.ecart < -20 else ('warning text-dark' if l.s.ecart < -10 else ('success' if l.s.ecart > 10 else 'light text-dark border')) }}">{{ '+' if l.s.ecart > 0 }}{{ '%.0f'|format(l.s.ecart) }} %</span>
+        {% else %}—{% endif %}</td>
+      <td class="text-end">{{ l.s.seq }}{% if l.s.seq10 %} <span class="badge bg-warning text-dark" title="séquences sèches ≥ 10 jours">{{ l.s.seq10 }}×≥10 j</span>{% endif %}</td>
+      <td class="text-end">{{ l.s.faux or '—' }}</td>
+      {% else %}
+      <td colspan="7" class="text-muted">Pas de données pour {{ annee }}</td>
+      {% endif %}
+    </tr>
+  {% else %}
+    <tr><td colspan="10" class="text-center text-muted py-4">Aucune parcelle rattachée à la grille climatique.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div></div></div>
+<p class="form-text mt-2">
+  Démarrage : premier jour après le 1er mai avec au moins 20 mm en 3 jours, sans séquence sèche de plus de 7 jours dans les 30 jours suivants (critère AGRHYMET).
+  Fin : réserve en eau du sol épuisée après le 1er septembre (réserve utile selon la texture du sol). Valeurs médianes des cellules de 5 km de la commune.
+</p>
+{% endblock %}

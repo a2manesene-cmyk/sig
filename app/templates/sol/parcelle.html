@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+{% block title %}Sol {{ p.code }} — ANCAR SIG{% endblock %}
+{% set fcol = {'Bonne':'success','Moyenne':'warning','Faible':'danger'} %}
+{% macro val(k) -%}
+{%- if form is not none -%}{{ form.get(k, '') }}
+{%- elif a and a[k] is not none -%}{{ ('%.' ~ SOL_REF.PARAM[k][3] ~ 'f')|format(a[k]) }}
+{%- endif -%}
+{%- endmacro %}
+{% macro champ(k) %}
+{% set prm = SOL_REF.PARAM[k] %}
+<div class="col-6 col-md-3">
+  <label class="form-label small mb-0">{{ prm[1] }}{% if prm[2] %} <span class="text-muted">({{ prm[2] }})</span>{% endif %}</label>
+  <input name="{{ k }}" value="{{ val(k) }}" inputmode="decimal" class="form-control form-control-sm"
+         placeholder="{{ prm[4][0] }}–{{ prm[4][1] }}" {{ 'disabled' if not peut }}>
+</div>
+{% endmacro %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+  <div>
+    <h3 class="ancar-title mb-0">Sol — parcelle {{ p.code }}</h3>
+    <div class="small text-muted">
+      {% if p.producteur %}{{ ((p.producteur.prenom or '') ~ ' ' ~ p.producteur.nom)|trim }} · {% endif %}{{ p.commune or '—' }}{% if p.village %} · {{ p.village }}{% endif %}{% if p.surface_ha %} · {{ '%.2f'|format(p.surface_ha) }} ha{% endif %}
+    </div>
+  </div>
+  <div class="d-flex gap-1">
+    <a href="{{ url_for('parcelles.fiche', pid=p.id) }}#sol" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left"></i> Fiche parcelle</a>
+    <a href="{{ url_for('sol.liste') }}" class="btn btn-outline-secondary btn-sm">Liste des sols</a>
+  </div>
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-5">
+    <div class="card border-0 shadow-sm"><div class="card-body">
+      <h6 class="mb-2"><i class="bi bi-moisture text-success"></i> Situation actuelle</h6>
+      {% if a and (a.ph is not none or a.texture or a.p_olsen is not none) %}
+      <div class="mb-2">
+        {% if a.fertilite %}<span class="badge bg-{{ fcol.get(a.fertilite,'secondary') }}">Fertilité {{ a.fertilite|lower }}</span>{% endif %}
+        {% if a.origine == 'CAR' %}<span class="badge bg-primary">Saisie CAR — {{ a.source }}</span>
+        {% else %}<span class="badge bg-light text-dark border">Estimation IFDC — {{ a.fiabilite }}</span>{% endif %}
+      </div>
+      <table class="table table-sm small mb-2">
+        {% for k, lib, u, d, _b, _c in SOL_REF.PARAMETRES %}
+        {% if a[k] is not none %}
+        {% set cl = SOL_REF.classe(k, a[k]) %}
+        <tr><td>{{ lib }}</td>
+          <td class="text-end">{{ ('%.' ~ d ~ 'f')|format(a[k]) }} <span class="text-muted">{{ u }}</span></td>
+          <td>{% if cl %}<span class="badge bg-{{ SOL_REF.COULEUR_CLASSE.get(cl,'secondary') }}">{{ cl }}</span>{% endif %}</td></tr>
+        {% endif %}
+        {% endfor %}
+        <tr><td>Texture</td><td colspan="2">{{ a.texture or '—' }}</td></tr>
+      </table>
+      {% if a.contraintes %}<p class="small mb-1"><b>Points d'attention :</b> {{ a.contraintes }}</p>{% endif %}
+      {% if a.origine == 'CAR' %}
+      <p class="small text-muted mb-0">
+        {% if a.laboratoire %}Laboratoire : {{ a.laboratoire }} · {% endif %}
+        {% if a.date_analyse %}Analyse du {{ a.date_analyse.strftime('%d/%m/%Y') }} · {% endif %}
+        Saisie par {{ a.saisi_par.nom if a.saisi_par else '—' }}{% if a.saisi_le %} le {{ a.saisi_le.strftime('%d/%m/%Y') }}{% endif %}
+      </p>
+      {% if a.note %}<p class="small mb-0"><b>Note :</b> {{ a.note }}</p>{% endif %}
+      {% endif %}
+      {% else %}
+      <p class="small text-muted mb-0">Aucune donnée de sol pour cette parcelle
+        {%- if a and a.fiabilite %} ({{ a.fiabilite|lower }}){% endif %}.
+        {% if peut %}Saisissez une analyse ou une observation ci-contre.{% endif %}</p>
+      {% endif %}
+    </div></div>
+
+    {% if a and a.ifdc %}
+    <div class="card border-0 shadow-sm mt-3"><div class="card-body">
+      <h6 class="mb-1"><i class="bi bi-geo text-success"></i> Estimation IFDC (référence)</h6>
+      <p class="small text-muted mb-2">Interpolation des {{ a.nb_points }} point(s) IFDC situés à moins de 5 km ;
+        point le plus proche à {{ '{:,.0f}'.format(a.distance_m).replace(',', ' ') }} m ({{ a.fiabilite|lower }}).</p>
+      <div class="small">
+        pH {{ '%.1f'|format(a.ifdc.ph) if a.ifdc.ph is not none else '—' }} ·
+        P {{ '%.1f'|format(a.ifdc.p_olsen) if a.ifdc.p_olsen is not none else '—' }} ppm ·
+        K {{ '%.0f'|format(a.ifdc.k) if a.ifdc.k is not none else '—' }} ppm ·
+        MO {{ '%.2f'|format(a.ifdc.mo) if a.ifdc.mo is not none else '—' }} % ·
+        {{ a.ifdc.texture or '—' }}
+      </div>
+      {% if peut and a.origine == 'CAR' %}
+      <form method="post" action="{{ url_for('sol.parcelle_ifdc', pid=p.id) }}" class="mt-2"
+            onsubmit="return confirm('Remplacer la saisie CAR par l\'estimation IFDC ? La saisie reste dans l\'historique.');">
+        <button class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-counterclockwise"></i> Revenir aux valeurs IFDC</button>
+      </form>
+      {% endif %}
+    </div></div>
+    {% endif %}
+  </div>
+
+  <div class="col-lg-7">
+    <div class="card border-0 shadow-sm"><div class="card-body">
+      <h6 class="mb-1"><i class="bi bi-pencil-square text-success"></i> {{ 'Saisir ou corriger' if peut else 'Détail' }} l'analyse de sol</h6>
+      {% if peut %}
+      <p class="small text-muted mb-3">Renseignez seulement ce que vous connaissez : un champ vide reste vide.
+        Votre saisie remplace l'estimation IFDC pour cette parcelle ; l'estimation reste consultable.</p>
+      {% else %}
+      <p class="small text-muted mb-3">La saisie est réservée au CAR et à l'encadrement, dans leur périmètre.</p>
+      {% endif %}
+      <form method="post" class="row g-2">
+        <div class="col-12 small fw-semibold text-success mt-1">Éléments majeurs</div>
+        {{ champ('ph') }}{{ champ('p_olsen') }}{{ champ('k') }}{{ champ('mo') }}
+        {{ champ('n') }}{{ champ('c_total') }}
+        <div class="col-12 small fw-semibold text-success mt-2">Bases échangeables et oligo-éléments</div>
+        {{ champ('cec') }}{{ champ('ca') }}{{ champ('mg') }}{{ champ('s') }}
+        {{ champ('zn') }}{{ champ('b') }}
+        <div class="col-12 small fw-semibold text-success mt-2">Texture</div>
+        {{ champ('sable') }}{{ champ('argile') }}{{ champ('limon') }}
+        <div class="col-6 col-md-3">
+          <label class="form-label small mb-0">Texture (sans granulométrie)</label>
+          {% set tx = form.get('texture') if form is not none else (a.texture if a else '') %}
+          <select name="texture" class="form-select form-select-sm" {{ 'disabled' if not peut }}>
+            <option value="">—</option>
+            {% for t in ['Sable','Sable limoneux','Limon sableux','Limon','Limon argilo-sableux','Limon argileux','Argile'] %}
+            <option {{ 'selected' if tx == t }}>{{ t }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="col-12 form-text mt-0">Si sable, argile et limon sont saisis, la texture est calculée automatiquement. Si la MO est vide, elle est déduite du carbone (C × 1,724).</div>
+
+        <div class="col-12 small fw-semibold text-success mt-2">Origine de la donnée</div>
+        {% set src = form.get('source') if form is not none else (a.source if a and a.origine == 'CAR' else '') %}
+        <div class="col-md-4">
+          <label class="form-label small mb-0">Source <span class="text-danger">*</span></label>
+          <select name="source" class="form-select form-select-sm" required {{ 'disabled' if not peut }}>
+            <option value="">—</option>
+            {% for s in SOL_REF.SOURCES_CAR %}<option {{ 'selected' if src == s }}>{{ s }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label small mb-0">Laboratoire</label>
+          <input name="laboratoire" value="{{ form.get('laboratoire','') if form is not none else (a.laboratoire or '' if a else '') }}" class="form-control form-control-sm" placeholder="INP, ISRA, kit…" {{ 'disabled' if not peut }}>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label small mb-0">Date de l'analyse</label>
+          <input type="date" name="date_analyse" value="{{ form.get('date_analyse','') if form is not none else (a.date_analyse.isoformat() if a and a.date_analyse else '') }}" class="form-control form-control-sm" {{ 'disabled' if not peut }}>
+        </div>
+        <div class="col-12">
+          <label class="form-label small mb-0">Note</label>
+          <textarea name="note" rows="2" class="form-control form-control-sm" placeholder="Observation terrain, conditions de prélèvement…" {{ 'disabled' if not peut }}>{{ form.get('note','') if form is not none else (a.note or '' if a else '') }}</textarea>
+        </div>
+        {% if peut %}
+        <input type="hidden" name="retour" value="{{ request.args.get('retour','') }}">
+        <div class="col-12 mt-2"><button class="btn btn-success btn-sm"><i class="bi bi-save"></i> Enregistrer l'analyse</button></div>
+        {% endif %}
+      </form>
+    </div></div>
+
+    {% if historique %}
+    <div class="card border-0 shadow-sm mt-3"><div class="card-body">
+      <h6 class="mb-2"><i class="bi bi-clock-history text-success"></i> Historique des modifications</h6>
+      <table class="table table-sm small mb-0">
+        <thead><tr><th>Date</th><th>Par</th><th>Action</th><th>Changements</th></tr></thead>
+        {% for h in historique %}
+        <tr><td class="text-nowrap">{{ h.date.strftime('%d/%m/%Y %H:%M') }}</td>
+          <td>{{ h.user.nom if h.user else '—' }}</td><td>{{ h.action }}</td>
+          <td>{% for k, v in h.changements.items() %}
+            <span class="text-nowrap">{{ SOL_REF.PARAM[k][1] if k in SOL_REF.PARAM else k|capitalize }} :
+              {{ ('%.2f'|format(v[0]) if v[0] is number else (v[0] or '—')) }} → <b>{{ ('%.2f'|format(v[1]) if v[1] is number else (v[1] or '—')) }}</b></span>{{ ' · ' if not loop.last }}
+            {% endfor %}</td></tr>
+        {% endfor %}
+      </table>
+    </div></div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

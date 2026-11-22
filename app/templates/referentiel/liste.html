@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Référentiel des cultures — ANCAR SIG{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+  <h3 class="ancar-title mb-0">Référentiel des cultures <span class="badge ancar-badge">{{ cultures|length }}</span></h3>
+  <div class="d-flex gap-2">
+    <a href="{{ url_for('referentiel.fiches_liste') }}" class="btn btn-outline-success btn-sm"><i class="bi bi-file-earmark-text"></i> Fiches techniques</a>
+    {% if current_user.niveau >= 4 %}<a href="{{ url_for('referentiel.potentiels') }}" class="btn ancar-btn btn-sm"><i class="bi bi-graph-up-arrow"></i> Rendements potentiels, spéculations et variétés</a>{% endif %}
+  </div>
+</div>
+<p class="small text-muted">Cycle, coefficients culturaux (besoins en eau, méthode FAO-56), fumure et rendements de référence de chaque culture.
+  Ces valeurs alimentent le calendrier, les besoins en eau et le plan de fumure de chaque parcelle.
+  <span class="badge bg-warning text-dark">à valider</span> : valeur issue de la bibliographie, à confirmer par l'ISRA / le CDH.</p>
+
+<div class="card border-0 shadow-sm"><div class="card-body p-0"><div class="table-responsive">
+<table class="table table-hover table-sm align-middle mb-0 small">
+  <thead class="table-light"><tr>
+    <th>Culture</th><th>Système</th><th class="text-end">Parcelles</th><th class="text-end">Cycle (j)</th>
+    <th class="text-end">Kc ini / mi / fin</th><th class="text-end">Rendement (t/ha)</th>
+    <th>Fumure organique</th><th>Fond</th><th>Couverture</th><th></th></tr></thead>
+  <tbody>
+  {% for c in cultures %}
+    <tr>
+      <td><a href="{{ url_for('referentiel.culture', cid=c.id) }}" class="fw-semibold text-decoration-none">{{ c.nom }}</a>
+        {% if c.a_valider %}<span class="badge bg-warning text-dark">à valider</span>{% endif %}
+        {% if c.fiche_id %}<a href="{{ url_for('referentiel.fiche', fid=c.fiche_id) }}" class="badge bg-success text-decoration-none" title="Fiche technique validée"><i class="bi bi-file-earmark-check"></i> fiche</a>{% endif %}
+        <div class="text-muted">{{ c.famille or '' }}</div></td>
+      <td>{{ c.systeme or '—' }}</td>
+      <td class="text-end">{{ par_culture.get(c.id, 0) }}</td>
+      <td class="text-end">{{ c.cycle_j or '—' }}</td>
+      <td class="text-end">{{ '%.2f'|format(c.kc_ini) if c.kc_ini is not none else '—' }} / {{ '%.2f'|format(c.kc_mid) if c.kc_mid is not none else '—' }} / {{ '%.2f'|format(c.kc_fin) if c.kc_fin is not none else '—' }}</td>
+      <td class="text-end">{% if c.rdt_min or c.rdt_max %}{{ ('%g'|format(c.rdt_min)) if c.rdt_min else '?' }}–{{ ('%g'|format(c.rdt_max)) if c.rdt_max else '?' }}{% else %}<span class="text-muted">à renseigner</span>{% endif %}</td>
+      <td>{% if c.fumure_org_min_t %}{{ '%g'|format(c.fumure_org_min_t) }}–{{ '%g'|format(c.fumure_org_max_t or c.fumure_org_min_t) }} t/ha{% else %}<span class="text-muted">—</span>{% endif %}</td>
+      <td>{% if c.fond_kg %}{{ c.fond_kg|int }} kg/ha {{ c.engrais_fond or '' }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+      <td>{% if c.couverture_kg %}{{ c.couverture_kg|int }} kg/ha × {{ c.jours_apports|length }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+      <td class="text-end"><a href="{{ url_for('referentiel.culture', cid=c.id) }}" class="btn btn-outline-success btn-sm py-0">{{ 'Modifier' if current_user.niveau >= 4 else 'Voir' }}</a></td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div></div></div>
+
+{% if sans_ref %}
+<div class="alert alert-light border small mt-3 mb-0">
+  <b>Cultures des parcelles absentes du référentiel</b> (pas de calendrier ni de besoins calculés) :
+  {% for cult, n in sans_ref %}{{ cult }} ({{ n }}){{ ', ' if not loop.last }}{% endfor %}.
+  Pour en reconnaître une, ajoutez son nom aux synonymes d'une culture existante.
+</div>
+{% endif %}
+{% endblock %}

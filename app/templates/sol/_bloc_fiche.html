@@ -1,0 +1,42 @@
+{# Bloc « Qualité du sol » de la fiche parcelle (module Sol) #}
+{% set a = sol_analyse(p.id) %}
+{% set fcol = {'Bonne':'success','Moyenne':'warning','Faible':'danger'} %}
+<div class="card border-0 shadow-sm mt-3" id="sol"><div class="card-body">
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+    <h6 class="mb-0"><i class="bi bi-moisture text-success"></i> Qualité du sol</h6>
+    <a href="{{ url_for('sol.parcelle', pid=p.id, retour='fiche') }}" class="btn btn-outline-success btn-sm">
+      {% if current_user.niveau >= 2 %}<i class="bi bi-pencil"></i> Saisir / corriger l'analyse{% else %}Détail{% endif %}</a>
+  </div>
+  {% if a and (a.ph is not none or a.texture or a.p_olsen is not none) %}
+  <div class="mb-2">
+    {% if a.fertilite %}<span class="badge bg-{{ fcol.get(a.fertilite,'secondary') }}">Fertilité {{ a.fertilite|lower }}</span>{% endif %}
+    {% if a.origine == 'CAR' %}<span class="badge bg-primary">Saisie CAR — {{ a.source }}</span>
+    {% else %}<span class="badge bg-light text-dark border">Estimation IFDC — {{ a.fiabilite }}</span>{% endif %}
+  </div>
+  <div class="row g-2 small">
+    {% for k in ['ph', 'p_olsen', 'k', 'mo', 'n'] %}
+    {% set prm = SOL_REF.PARAM[k] %}
+    {% if a[k] is not none %}
+    {% set cl = SOL_REF.classe(k, a[k]) %}
+    <div class="col-6 col-md">
+      <div class="border rounded p-2 h-100">
+        <div class="text-muted">{{ prm[1] }}</div>
+        <div class="fw-semibold">{{ ('%.' ~ prm[3] ~ 'f')|format(a[k]) }} <span class="text-muted fw-normal">{{ prm[2] }}</span></div>
+        {% if cl %}<span class="badge bg-{{ SOL_REF.COULEUR_CLASSE.get(cl,'secondary') }}">{{ cl }}</span>{% endif %}
+      </div>
+    </div>
+    {% endif %}
+    {% endfor %}
+    <div class="col-6 col-md">
+      <div class="border rounded p-2 h-100">
+        <div class="text-muted">Texture</div>
+        <div class="fw-semibold">{{ a.texture or '—' }}</div>
+      </div>
+    </div>
+  </div>
+  {% if a.contraintes %}<p class="small mt-2 mb-0"><b>Points d'attention :</b> {{ a.contraintes }}</p>{% endif %}
+  {% else %}
+  <p class="text-muted small mb-0">Aucune donnée de sol pour cette parcelle{% if a and a.fiabilite %} ({{ a.fiabilite|lower }}){% endif %}.
+    {% if current_user.niveau >= 2 %}Le CAR peut saisir une analyse ou une observation terrain.{% endif %}</p>
+  {% endif %}
+</div></div>

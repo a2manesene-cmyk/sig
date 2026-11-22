@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+{% block title %}Besoins {{ c.nom }} — {{ p.code }} — ANCAR SIG{% endblock %}
+{% macro nb(v, d=0) -%}{{ ('{:,.' ~ d ~ 'f}').format(v).replace(',', ' ').replace('.', ',') if v is not none else '—' }}{%- endmacro %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+  <div>
+    <h3 class="ancar-title mb-0">{{ c.nom }} — parcelle {{ p.code }}</h3>
+    <div class="small text-muted">{{ p.commune or p.village or '—' }} · {{ nb(p.surface_ha, 2) }} ha
+      {% if c.a_valider %} · <span class="badge bg-warning text-dark">référentiel à valider</span>{% endif %}</div>
+  </div>
+  <a href="{{ url_for('parcelles.fiche', pid=p.id) }}#besoins" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left"></i> Fiche parcelle</a>
+</div>
+
+<form method="get" class="card border-0 shadow-sm mb-3"><div class="card-body py-2">
+  <div class="row g-2 align-items-end">
+    <div class="col-md-3"><label class="form-label small mb-0">Semis / repiquage</label>
+      <input type="date" name="debut" value="{{ debut.isoformat() }}" class="form-control form-control-sm"></div>
+    {% if c.systeme == 'Irrigué' %}
+    <div class="col-md-3"><label class="form-label small mb-0">Mode d'irrigation</label>
+      <select name="irrigation" class="form-select form-select-sm">
+        {% for k, v in efficiences.items() %}<option value="{{ k }}" {{ 'selected' if k == irrigation }}>{{ k }} ({{ (v * 100)|int }} %)</option>{% endfor %}
+      </select></div>
+    {% endif %}
+    <div class="col-md-2 d-grid"><button class="btn btn-success btn-sm">Recalculer</button></div>
+    <div class="col-md-4 small text-muted">Date de départ : {{ origine }}{% if origine == "aujourd'hui" %} (pas de date de semis connue){% endif %}.
+      {% if peut_suivre %}<button formmethod="post" formaction="{{ url_for('referentiel.enregistrer_debut', pid=p.id) }}" class="btn btn-link btn-sm p-0 align-baseline">Enregistrer cette date pour la parcelle</button>{% endif %}</div>
+  </div>
+</div></form>
+
+{% if suivi %}
+{% set cl = {'Réalisée': 'success', 'En retard': 'danger', 'À faire': 'warning text-dark', 'À venir': 'light text-dark', 'Au besoin': 'secondary'} %}
+<div class="card border-0 shadow-sm mb-3" id="itineraire"><div class="card-body">
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+    <h6 class="mb-0"><i class="bi bi-list-check text-success"></i> Itinéraire technique — campagne {{ suivi.annee }}
+      <span class="small text-muted fw-normal">(fiche technique {{ c.nom }}, J0 = {{ c.reference_j0 or 'semis' }} du {{ debut.strftime('%d/%m/%Y') }})</span></h6>
+    <div class="small">{% for k in ['En retard', 'À faire', 'Réalisée', 'À venir'] %}{% if suivi.comptes.get(k) %}<span class="badge bg-{{ cl[k] }} ms-1">{{ suivi.comptes[k] }} {{ k|lower }}</span>{% endif %}{% endfor %}</div>
+  </div>
+  {% if origine == "aujourd'hui" %}<div class="alert alert-warning small py-1">Date de {{ c.reference_j0 or 'semis' }} inconnue : l'itinéraire est calé sur aujourd'hui. Saisissez la date réelle ci-dessus{% if peut_suivre %} puis « Enregistrer cette date »{% endif %}.</div>{% endif %}
+  <div class="table-responsive"><table class="table table-sm small align-middle mb-0">
+    <thead class="table-light"><tr><th>Date prévue</th><th class="text-end">J</th><th>Opération</th><th class="text-end">Pour {{ nb(p.surface_ha, 2) }} ha</th><th>Statut</th><th style="min-width:330px">Réalisation</th></tr></thead>
+    {% for x in suivi.operations %}{% set o = x.op %}
+    <tr class="{{ 'table-danger' if x.statut == 'En retard' }}">
+      <td class="text-nowrap">{{ x.date.strftime('%d/%m/%Y') }}</td>
+      <td class="text-end text-muted">{{ o.jour }}</td>
+      <td><span class="text-muted">{{ o.categorie }}</span> · <b>{{ o.libelle }}</b>
+        {% if o.details %}<div class="text-muted" style="font-size:.75rem">{{ o.details|truncate(140) }}</div>{% endif %}</td>
+      <td class="text-end text-nowrap">{% if x.quantite %}{% if o.dose_kg_ha >= 1000 and 'fumier' in (o.produit or '')|lower %}{{ nb(x.quantite / 1000, 1) }} t{% else %}{{ nb(x.quantite) }} kg <span class="text-muted">({{ nb(x.quantite / 50, 1) }} sac{{ 's' if x.quantite > 50 }})</span>{% endif %}<div class="text-muted">{{ o.produit or '' }}</div>{% endif %}</td>
+      <td><span class="badge bg-{{ cl[x.statut] }}">{{ x.statut }}</span></td>
+      <td>{% if x.fait %}
+          le {{ x.fait.date_realisee.strftime('%d/%m/%Y') }}{% if x.fait.quantite_kg %} · {{ nb(x.fait.quantite_kg) }} kg{% endif %}{% if x.fait.note %} · <span class="text-muted">{{ x.fait.note }}</span>{% endif %}
+          {% if peut_suivre %}<form method="post" action="{{ url_for('referentiel.enregistrer_operation', pid=p.id) }}" class="d-inline">
+            <input type="hidden" name="itineraire_id" value="{{ o.id }}"><input type="hidden" name="annee" value="{{ suivi.annee }}"><input type="hidden" name="action" value="annuler">
+            <button class="btn btn-link btn-sm p-0 ms-1 text-danger" title="Annuler"><i class="bi bi-arrow-counterclockwise"></i></button></form>{% endif %}
+        {% elif peut_suivre and x.statut != 'À venir' %}
+          <form method="post" action="{{ url_for('referentiel.enregistrer_operation', pid=p.id) }}" class="d-flex gap-1">
+            <input type="hidden" name="itineraire_id" value="{{ o.id }}"><input type="hidden" name="annee" value="{{ suivi.annee }}">
+            <input type="date" name="date_realisee" value="{{ (x.date if x.date <= aujourdhui else aujourdhui).isoformat() }}" max="{{ aujourdhui.isoformat() }}" class="form-control form-control-sm" style="width:130px">
+            {% if o.dose_kg_ha %}<input name="quantite" inputmode="decimal" placeholder="kg" class="form-control form-control-sm" style="width:70px">{% endif %}
+            <input name="note" placeholder="Observation" class="form-control form-control-sm">
+            <button class="btn btn-success btn-sm py-0" title="Opération réalisée"><i class="bi bi-check-lg"></i></button>
+          </form>
+        {% endif %}</td>
+    </tr>{% endfor %}
+  </table></div>
+</div></div>
+{% endif %}
+
+<div class="row g-3">
+  <div class="col-lg-5">
+    <div class="card border-0 shadow-sm"><div class="card-body">
+      <h6><i class="bi bi-calendar3 text-success"></i> Calendrier cultural ({{ c.cycle_j }} jours)</h6>
+      <table class="table table-sm small mb-2">
+        <thead class="table-light"><tr><th>Stade</th><th>Du</th><th>Au</th><th class="text-end">Jours</th></tr></thead>
+        {% for s in calendrier %}<tr><td>{{ s.stade }}</td><td>{{ s.debut|jour_mois }}</td><td>{{ s.fin|jour_mois }}</td><td class="text-end">{{ s.jours }}</td></tr>{% endfor %}
+      </table>
+      {% if c.periode %}<p class="small mb-1"><b>Période conseillée :</b> {{ c.periode }}</p>{% endif %}
+      {% if c.ecartements %}<p class="small mb-0"><b>Écartements :</b> {{ c.ecartements }}</p>{% endif %}
+    </div></div>
+
+    <div class="card border-0 shadow-sm mt-3"><div class="card-body">
+      <h6><i class="bi bi-bag text-success"></i> Plan de fumure pour {{ nb(p.surface_ha, 2) }} ha</h6>
+      {% set f = fumure %}
+      <table class="table table-sm small mb-2">
+        {% if f.organique %}<tr><td>Fumure organique, avant semis</td><td class="text-end"><b>{{ nb(f.organique.t, 1) }} t</b></td><td class="text-muted">{{ '%g'|format(f.organique.t_ha) }} t/ha</td></tr>{% endif %}
+        {% if f.fond %}<tr><td>Fond : {{ f.fond.engrais }}, {{ f.fond.date|jour_mois }}</td><td class="text-end"><b>{{ nb(f.fond.kg) }} kg</b></td><td class="text-muted">{{ nb(f.fond.sacs, 1) }} sac(s)</td></tr>{% endif %}
+        {% for a in f.apports %}<tr><td>Couverture : {{ a.engrais }}, {{ a.date|jour_mois }} (J+{{ a.jour }})</td><td class="text-end"><b>{{ nb(a.kg) }} kg</b></td><td class="text-muted">{{ nb(a.sacs, 1) }} sac(s)</td></tr>{% endfor %}
+        {% if f.total_kg %}<tr class="fw-semibold"><td>Total engrais minéral</td><td class="text-end">{{ nb(f.total_kg) }} kg</td><td>{{ nb(f.total_sacs, 1) }} sac(s) de 50 kg</td></tr>{% endif %}
+      </table>
+      {% for r in f.remarques %}<div class="small text-{{ 'danger' if 'pH' in r else 'muted' }}"><i class="bi bi-info-circle"></i> {{ r }}</div>{% endfor %}
+      {% if sol %}<div class="small text-muted mt-1">Sol pris en compte : {{ sol.texture or 'texture inconnue' }}{% if sol.ph is not none %}, pH {{ '%.1f'|format(sol.ph) }}{% endif %}{% if sol.contraintes %} — {{ sol.contraintes }}{% endif %} ({{ 'saisie CAR' if sol.origine == 'CAR' else 'estimation IFDC' }}).</div>
+      {% else %}<div class="small text-muted mt-1">Pas de données de sol : plan standard, sans ajustement.</div>{% endif %}
+      {% if observe and (observe.npk_kg_ha or observe.uree_kg_ha) %}
+      <div class="small text-muted mt-1">Pratique observée ({{ observe.n }} fiches) : NPK {{ observe.npk_kg_ha|round|int if observe.npk_kg_ha else '—' }} kg/ha, urée {{ observe.uree_kg_ha|round|int if observe.uree_kg_ha else '—' }} kg/ha.</div>
+      {% endif %}
+    </div></div>
+  </div>
+
+  <div class="col-lg-7">
+    {% if doses %}
+    <div class="card border-0 shadow-sm mb-3"><div class="card-body">
+      <h6><i class="bi bi-moisture text-success"></i> Doses d'irrigation de la fiche technique — {{ irrigation|lower }}</h6>
+      <table class="table table-sm small mb-1">
+        <thead class="table-light"><tr><th>Phase</th><th>Du</th><th>Au</th><th class="text-end">l/m²/jour</th><th class="text-end">m³/jour pour la parcelle</th></tr></thead>
+        {% for d in doses %}<tr class="{{ 'table-success fw-semibold' if d.en_cours }}">
+          <td>{{ d.phase }}. {{ d.libelle or '' }}</td><td>{{ d.debut|jour_mois }}</td><td>{{ d.fin|jour_mois }}</td>
+          <td class="text-end">{{ nb(d.dose_debut, 1) }}{% if d.dose_fin != d.dose_debut %} → {{ nb(d.dose_fin, 1) }}{% endif %}</td>
+          <td class="text-end">{{ nb(d.m3_debut, 1) }}{% if d.dose_fin != d.dose_debut %} → {{ nb(d.m3_fin, 1) }}{% endif %}</td></tr>
+          {% if d.en_cours %}<tr class="table-success"><td colspan="5" class="small">Aujourd'hui : <b>{{ nb(d.dose_auj, 1) }} l/m²</b>, soit <b>{{ nb(d.m3_auj, 1) }} m³</b> à apporter sur la parcelle.</td></tr>{% endif %}
+        {% endfor %}
+      </table>
+      <div class="small text-muted">Phases calées sur les stades du cycle ({{ c.cycle_j }} j). Changez le mode d'irrigation ci-dessus pour les doses d'un autre système.</div>
+    </div></div>
+    {% endif %}
+    {% if c.systeme == 'Irrigué' and eau %}
+    <div class="card border-0 shadow-sm"><div class="card-body">
+      <h6><i class="bi bi-droplet text-success"></i> Besoins en eau d'irrigation</h6>
+      <div class="row g-2 mb-2 small">
+        <div class="col-6 col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted">Sur le cycle</div><div class="fs-5 fw-semibold">{{ nb(eau.m3) }} m³</div><div class="text-muted">{{ nb(eau.brut_mm) }} mm</div></div></div>
+        <div class="col-6 col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted">Pointe</div><div class="fs-5 fw-semibold">{{ nb(eau.pic_litres_jour / 1000, 1) }} m³/j</div><div class="text-muted">{{ nb(eau.pic_mm, 1) }} mm/j, {{ eau.pic_date|jour_mois }}</div></div></div>
+        <div class="col-6 col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted">Besoin de la culture</div><div class="fs-5 fw-semibold">{{ nb(eau.etc_mm) }} mm</div><div class="text-muted">ETc sur le cycle</div></div></div>
+        <div class="col-6 col-md-3"><div class="border rounded p-2 h-100"><div class="text-muted">Pluie utile</div><div class="fs-5 fw-semibold">{{ nb(eau.pluie_eff_mm) }} mm</div><div class="text-muted">déduite</div></div></div>
+      </div>
+      <div style="height:240px"><canvas id="chartEau"></canvas></div>
+      <p class="small text-muted mt-2 mb-0">ETc = Kc × ET0 (FAO-56), ET0 moyenne des années en base pour la cellule climatique de la parcelle
+        ({{ eau.n_annees }} an(s)){% if eau.jours_sans_climat %}, <span class="text-warning">{{ eau.jours_sans_climat }} jour(s) sans donnée climatique estimés à 5 mm/j</span>{% endif %}.
+        Efficience retenue : {{ (eau.efficience * 100)|int }} % ({{ eau.efficience_nom|lower }}).</p>
+    </div></div>
+    {% elif c.systeme == 'Irrigué' %}
+    <div class="card border-0 shadow-sm"><div class="card-body small text-muted">Besoins en eau non calculés : coefficients culturaux (Kc) à renseigner dans le <a href="{{ url_for('referentiel.culture', cid=c.id) }}">référentiel</a>.</div></div>
+    {% else %}
+    <div class="card border-0 shadow-sm"><div class="card-body small">
+      <h6><i class="bi bi-cloud-rain text-success"></i> Culture pluviale</h6>
+      Les besoins en eau sont couverts par la pluie : voir le bloc <a href="{{ url_for('climat.parcelle', pid=p.id) }}">Climat de la saison</a>
+      (démarrage, séquences sèches, fin de saison) pour caler le semis et les apports.
+    </div></div>
+    {% endif %}
+    {% if ennemis %}
+    <div class="card border-0 shadow-sm mt-3"><div class="card-body small">
+      <h6><i class="bi bi-bug text-success"></i> Ennemis à surveiller et traitements recommandés</h6>
+      <table class="table table-sm small mb-1">
+        {% for e in ennemis %}<tr><td class="text-nowrap"><b>{{ e.nom }}</b><div class="text-muted">{{ e.type }}{% if e.precisions %} · {{ e.precisions }}{% endif %}</div></td>
+          <td>{{ e.liste_ma|join(', ') if e.liste_ma else (e.traitement or '—') }}</td></tr>{% endfor %}
+      </table>
+      <div class="text-muted">Matières actives citées par la fiche technique : respecter la dose et le délai avant récolte du produit homologué.</div>
+    </div></div>
+    {% endif %}
+    <div class="card border-0 shadow-sm mt-3"><div class="card-body small">
+      <h6><i class="bi bi-journal-text text-success"></i> Sources du référentiel</h6>
+      <div class="text-muted">{{ c.source or '—' }}</div>
+    </div></div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+{% if c.systeme == 'Irrigué' and eau %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script>
+const sem = {{ eau.semaines|map(attribute='debut')|map('string')|list|tojson }};
+const m3 = {{ eau.semaines|map(attribute='m3')|list|tojson }};
+new Chart(document.getElementById('chartEau'), {type: 'bar',
+  data: {labels: sem.map(d => d.slice(8, 10) + '/' + d.slice(5, 7)),
+         datasets: [{label: 'Irrigation à apporter (m³ par semaine)', data: m3.map(v => Math.round(v * 10) / 10), backgroundColor: '#4a90d9'}]},
+  options: {maintainAspectRatio: false, plugins: {legend: {position: 'bottom'}},
+            scales: {y: {beginAtZero: true, title: {display: true, text: 'm³ / semaine'}}}}});
+</script>
+{% endif %}
+{% endblock %}

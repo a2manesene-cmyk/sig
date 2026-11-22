@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Base IFDC — ANCAR SIG{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h3 class="ancar-title mb-0">Base de données des sols IFDC</h3>
+  <a href="{{ url_for('sol.liste') }}" class="btn btn-outline-secondary btn-sm">Liste des sols</a>
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-6">
+    <div class="card border-0 shadow-sm"><div class="card-body">
+      <h6><i class="bi bi-upload text-success"></i> Importer la base IFDC</h6>
+      <p class="small text-muted">Fichier Excel « IFDC_BASE_DE_DONNEES_ANALYSE_SOLS » (colonnes CodeGeopoint, X, Y en UTM 28N, pH, P(Olsen), Ca, Mg, K… %Silt).
+        L'import <b>remplace</b> les points existants puis rattache automatiquement toutes les parcelles.</p>
+      <form method="post" enctype="multipart/form-data" class="d-flex gap-2 align-items-end">
+        <input type="hidden" name="action" value="import">
+        <input type="file" name="fichier" accept=".xlsx,.xlsm" class="form-control form-control-sm" required>
+        <button class="btn btn-success btn-sm text-nowrap"><i class="bi bi-upload"></i> Importer</button>
+      </form>
+    </div></div>
+
+    <div class="card border-0 shadow-sm mt-3"><div class="card-body">
+      <h6><i class="bi bi-arrow-repeat text-success"></i> Recalculer le rattachement</h6>
+      <p class="small text-muted">À lancer après l'import de nouvelles parcelles. Les saisies du CAR sont conservées.</p>
+      <form method="post"><input type="hidden" name="action" value="rattacher">
+        <button class="btn btn-outline-success btn-sm" {{ 'disabled' if not n_points }}><i class="bi bi-arrow-repeat"></i> Rattacher les parcelles</button>
+      </form>
+    </div></div>
+  </div>
+
+  <div class="col-lg-6">
+    <div class="card border-0 shadow-sm"><div class="card-body">
+      <h6><i class="bi bi-info-circle text-success"></i> État et méthode</h6>
+      <ul class="small mb-2">
+        <li><b>{{ n_points }}</b> points IFDC en base{% if dernier %}, importés le {{ dernier.strftime('%d/%m/%Y') }}{% endif %} ;
+          {{ n_ecartes }} point(s) avec au moins une valeur écartée.</li>
+        <li>Chaque parcelle reçoit la moyenne pondérée (inverse du carré de la distance) des
+          {{ SOL_REF.NB_VOISINS }} points IFDC les plus proches de son centre, dans un rayon de {{ SOL_REF.RAYON_MAX_M // 1000 }} km.</li>
+        <li>Fiabilité <b>bonne</b> si le point le plus proche est à moins de {{ SOL_REF.SEUIL_BONNE_M // 1000 }} km, <b>indicative</b> au-delà ;
+          au-delà de {{ SOL_REF.RAYON_MAX_M // 1000 }} km : hors couverture (saisie CAR possible).</li>
+        <li>Valeurs hors plage plausible écartées à l'import :
+          {% for k, lib, u, d, b, c in SOL_REF.PARAMETRES if c %}{{ lib }} {{ b[0] }}–{{ b[1] }}{{ ' ' ~ u if u }}{{ ' · ' if not loop.last }}{% endfor %}.</li>
+      </ul>
+      <p class="small text-muted mb-0">Les seuils des classes (faible / moyen / élevé) sont dans <code>app/sol/referentiel.py</code> ; ce sont des références générales à valider avec l'ISRA ou l'INP.</p>
+    </div></div>
+  </div>
+</div>
+{% endblock %}

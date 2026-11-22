@@ -14,6 +14,8 @@
     <a href="{{ url_for('parcelles.importer') }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-upload"></i> Importer</a>
     <a href="{{ url_for('parcelles.import_historique') }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-clock-history"></i> Historique</a>
     <a href="{{ url_for('parcelles.import_geo') }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-geo-alt"></i> Localisation</a>
+    {% if current_user.niveau >= 4 %}<a href="{{ url_for('parcelles.localisation_villages') }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-signpost-split"></i> Par village</a>{% endif %}
+    {% if current_user.niveau >= 3 %}<a href="{{ url_for('parcelles.export_complet') }}" class="btn btn-outline-success btn-sm" title="Toutes les données des parcelles, au format du modèle ANCAR (réimportable)"><i class="bi bi-filetype-json"></i> GeoJSON complet</a>{% endif %}
     <a href="{{ url_for('parcelles.creer') }}" class="btn ancar-btn btn-sm"><i class="bi bi-plus-lg"></i> Nouvelle</a>
     {% endif %}
   </div>

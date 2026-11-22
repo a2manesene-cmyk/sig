@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block title %}Climat {{ p.code }} — ANCAR SIG{% endblock %}
+{% macro ecart_jours(d, moy_jour) -%}
+{%- if d and moy_jour -%}
+{%- set e = d.timetuple().tm_yday - moy_jour -%}
+{%- if e|abs >= 3 %} <span class="badge bg-{{ 'warning text-dark' if e > 0 else 'info' }}">{{ '+' if e > 0 }}{{ e|round|int }} j / moyenne</span>{% endif -%}
+{%- endif -%}
+{%- endmacro %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+  <div>
+    <h3 class="ancar-title mb-0">Climat — parcelle {{ p.code }}</h3>
+    <div class="small text-muted">{{ p.commune or '—' }}{% if p.village %} · {{ p.village }}{% endif %} · cellule {{ cellule.code }} ({{ '%.3f'|format(cellule.lat) }}, {{ '%.3f'|format(cellule.lon) }})</div>
+  </div>
+  <div class="d-flex gap-2">
+    <form method="get"><select name="annee" class="form-select form-select-sm" onchange="this.form.submit()">
+      {% for a in annees %}<option {{ 'selected' if a == annee }}>{{ a }}</option>{% endfor %}</select></form>
+    <a href="{{ url_for('parcelles.fiche', pid=p.id) }}#climat" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left"></i> Fiche parcelle</a>
+  </div>
+</div>
+
+{% if not ind %}
+<div class="alert alert-warning small">Pas de données climatiques pour {{ annee }}.</div>
+{% else %}
+<div class="row g-3 mb-3">
+  <div class="col-6 col-lg-3"><div class="card border-0 shadow-sm h-100"><div class="card-body">
+    <div class="text-muted small">Démarrage de la saison</div>
+    <div class="fs-5 fw-semibold">{{ ind.debut|jour_mois if ind.debut else 'non installée' }}</div>
+    <div class="small">{{ ecart_jours(ind.debut, moy.debut_jour if moy) }}
+      {% if ind.faux_departs %}<span class="badge bg-warning text-dark">{{ ind.faux_departs }} faux départ(s)</span>{% endif %}
+      {% if ind.debut_provisoire %}<span class="badge bg-light text-dark border">provisoire</span>{% endif %}</div>
+  </div></div></div>
+  <div class="col-6 col-lg-3"><div class="card border-0 shadow-sm h-100"><div class="card-body">
+    <div class="text-muted small">Fin de saison · longueur</div>
+    <div class="fs-5 fw-semibold">{% if ind.fin %}{{ ind.fin|jour_mois }} · {{ ind.longueur_j }} j{% else %}en cours{% endif %}</div>
+    <div class="small">{{ ecart_jours(ind.fin, moy.fin_jour if moy) }}
+      {% if moy and moy.longueur_j %}<span class="text-muted">moyenne {{ moy.longueur_j|round|int }} j</span>{% endif %}</div>
+  </div></div></div>
+  <div class="col-6 col-lg-3"><div class="card border-0 shadow-sm h-100"><div class="card-body">
+    <div class="text-muted small">Pluie de la saison · mai–oct.</div>
+    <div class="fs-5 fw-semibold">{{ '%.0f'|format(ind.cumul_mm) if ind.cumul_mm is not none else '—' }} · {{ '%.0f'|format(ind.cumul_mai_oct) }} mm</div>
+    <div class="small">{% if moy and moy.cumul_mai_oct %}
+      {% set e = (ind.cumul_mai_oct / moy.cumul_mai_oct - 1) * 100 %}
+      <span class="badge bg-{{ 'danger' if e < -20 else ('warning text-dark' if e < -10 else ('success' if e > 10 else 'light text-dark border')) }}">{{ '+' if e > 0 }}{{ '%.0f'|format(e) }} %</span>
+      <span class="text-muted">moyenne {{ '%.0f'|format(moy.cumul_mai_oct) }} mm</span>{% endif %}
+      · {{ ind.nb_jours_pluie or 0 }} jours de pluie</div>
+  </div></div></div>
+  <div class="col-6 col-lg-3"><div class="card border-0 shadow-sm h-100"><div class="card-body">
+    <div class="text-muted small">Plus longue séquence sèche</div>
+    <div class="fs-5 fw-semibold">{{ ind.seq_seche_max_j if ind.seq_seche_max_j is not none else '—' }} j</div>
+    <div class="small">{% if ind.seq_seche_max_debut %}à partir du {{ ind.seq_seche_max_debut|jour_mois }}{% endif %}
+      {% if ind.nb_seq_seches_10j %} · <span class="badge bg-warning text-dark">{{ ind.nb_seq_seches_10j }} séquence(s) ≥ 10 j</span>{% endif %}</div>
+  </div></div></div>
+</div>
+
+<div class="card border-0 shadow-sm mb-3"><div class="card-body">
+  <h6 class="mb-1"><i class="bi bi-cloud-rain text-success"></i> Pluie journalière et cumul — {{ annee }}</h6>
+  <p class="small text-muted mb-2">Réserve utile retenue : {{ ru }} mm ({{ texture or 'texture inconnue' }}{{ ', sol de la parcelle' if texture else ', valeur de la cellule' }}).
+    {% if tmax[0] %}Pendant la saison : Tmax moyenne {{ '%.1f'|format(tmax[0]) }} °C, ETP {{ '%.1f'|format(tmax[1]) }} mm/j.{% endif %}</p>
+  <div style="height:320px"><canvas id="chartPluie"></canvas></div>
+</div></div>
+{% endif %}
+
+<div class="card border-0 shadow-sm"><div class="card-body">
+  <h6 class="mb-2"><i class="bi bi-calendar3 text-success"></i> Saisons précédentes (cellule de 5 km)</h6>
+  <div class="table-responsive"><table class="table table-sm small mb-0">
+    <thead class="table-light"><tr><th>Année</th><th>Démarrage</th><th>Fin</th><th class="text-end">Longueur (j)</th>
+      <th class="text-end">Cumul mai–oct. (mm)</th><th class="text-end">Séq. sèche max (j)</th><th class="text-end">Faux départs</th></tr></thead>
+    {% for s in historique %}
+    <tr class="{{ 'table-success' if s.annee == annee }}"><td><a href="?annee={{ s.annee }}">{{ s.annee }}</a></td>
+      <td>{{ s.debut|jour_mois }}</td><td>{{ s.fin|jour_mois if s.fin else 'en cours' }}</td>
+      <td class="text-end">{{ s.longueur_j or '—' }}</td><td class="text-end">{{ '%.0f'|format(s.cumul_mai_oct) if s.cumul_mai_oct is not none else '—' }}</td>
+      <td class="text-end">{{ s.seq_seche_max_j if s.seq_seche_max_j is not none else '—' }}</td><td class="text-end">{{ s.faux_departs or '—' }}</td></tr>
+    {% endfor %}
+    {% if moy %}
+    <tr class="fw-semibold"><td>Moyenne ({{ moy.n }} ans)</td>
+      <td>{{ date_du_jour(annee, moy.debut_jour)|jour_mois }}</td><td>{{ date_du_jour(annee, moy.fin_jour)|jour_mois }}</td>
+      <td class="text-end">{{ moy.longueur_j|round|int if moy.longueur_j else '—' }}</td>
+      <td class="text-end">{{ '%.0f'|format(moy.cumul_mai_oct) if moy.cumul_mai_oct else '—' }}</td>
+      <td class="text-end">{{ '%.0f'|format(moy.seq_seche_max_j) if moy.seq_seche_max_j is not none else '—' }}</td><td></td></tr>
+    {% endif %}
+  </table></div>
+</div></div>
+{% endblock %}
+{% block scripts %}
+{% if ind %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script>
+const jours = {{ jours|tojson }}, pluie = {{ pluie|tojson }}, cumul = {{ cumul|tojson }}, cumulMoy = {{ cumul_moy|tojson }};
+const fmt = d => { const [y, m, j] = d.split('-'); return j + '/' + m; };
+const ds = [
+  {type: 'bar', label: 'Pluie (mm/j)', data: pluie, backgroundColor: '#4a90d9', yAxisID: 'y', order: 2},
+  {type: 'line', label: 'Cumul {{ annee }} (mm)', data: cumul, borderColor: '#1b5e20', borderWidth: 2, pointRadius: 0, yAxisID: 'y2', order: 1},
+];
+if (cumulMoy) ds.push({type: 'line', label: 'Cumul moyen ({{ n_moy }} ans)', data: cumulMoy, borderColor: '#9e9e9e', borderDash: [5, 4], borderWidth: 1.5, pointRadius: 0, yAxisID: 'y2', order: 1});
+const marques = [];
+{% if ind.debut %}marques.push(['{{ ind.debut.isoformat() }}', 'Démarrage']);{% endif %}
+{% if ind.fin %}marques.push(['{{ ind.fin.isoformat() }}', 'Fin']);{% endif %}
+const lignesVerticales = {id: 'lv', afterDatasetsDraw(c) {
+  const {ctx, chartArea: a, scales: {x}} = c;
+  marques.forEach(([d, t]) => { const i = jours.indexOf(d); if (i < 0) return; const px = x.getPixelForValue(i);
+    ctx.save(); ctx.strokeStyle = '#e65100'; ctx.setLineDash([4, 3]); ctx.beginPath(); ctx.moveTo(px, a.top); ctx.lineTo(px, a.bottom); ctx.stroke();
+    ctx.fillStyle = '#e65100'; ctx.font = '11px sans-serif'; ctx.fillText(t, px + 4, a.top + 12); ctx.restore(); }); }};
+new Chart(document.getElementById('chartPluie'), {
+  data: {labels: jours.map(fmt), datasets: ds},
+  options: {maintainAspectRatio: false, interaction: {mode: 'index', intersect: false},
+    scales: {x: {ticks: {maxTicksLimit: 12}}, y: {position: 'left', title: {display: true, text: 'mm/jour'}, beginAtZero: true},
+             y2: {position: 'right', title: {display: true, text: 'cumul (mm)'}, beginAtZero: true, grid: {drawOnChartArea: false}}},
+    plugins: {legend: {position: 'bottom'}}},
+  plugins: [lignesVerticales]});
+</script>
+{% endif %}
+{% endblock %}

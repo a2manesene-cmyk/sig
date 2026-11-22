@@ -1,0 +1,32 @@
+{# Données d'enquête de la parcelle : pratiques par campagne et attributs #}
+{% set pratiques = enquete_pratiques(p.id) %}
+{% set attributs = enquete_attributs(p.id) %}
+{% if pratiques or attributs %}
+<div class="card border-0 shadow-sm mt-3" id="enquete"><div class="card-body">
+  <h6 class="text-muted text-uppercase small mb-2">Pratiques culturales (enquête)</h6>
+  {% for pr in pratiques %}
+  <div class="small fw-semibold mb-1">Campagne {{ pr.annee }}{% if pr.culture %} — {{ pr.culture }}{% endif %}</div>
+  <table class="table table-sm small mb-2">
+    {% if pr.precedent %}<tr><td class="text-muted">Précédent cultural</td><td>{{ pr.precedent }}</td></tr>{% endif %}
+    {% if pr.variete %}<tr><td class="text-muted">Variété</td><td>{{ pr.variete }}</td></tr>{% endif %}
+    {% if pr.date_semis %}<tr><td class="text-muted">Semis</td><td>{{ pr.date_semis.strftime('%d/%m/%Y') }}</td></tr>{% endif %}
+    {% if pr.labour is not none %}<tr><td class="text-muted">Labour</td><td>{{ 'Oui' if pr.labour else 'Non' }}</td></tr>{% endif %}
+    {% if pr.matiere_organique is not none %}<tr><td class="text-muted">Matière organique</td><td>{{ 'Oui' if pr.matiere_organique else 'Non' }}</td></tr>{% endif %}
+    {% if pr.npk_sacs is not none %}<tr><td class="text-muted">NPK</td><td>{{ pr.npk_sacs|round|int }} sac(s){% if pr.npk_kg_ha %} · {{ pr.npk_kg_ha|round|int }} kg/ha{% endif %}</td></tr>{% endif %}
+    {% if pr.uree_sacs is not none %}<tr><td class="text-muted">Urée</td><td>{{ pr.uree_sacs|round|int }} sac(s){% if pr.uree_kg_ha %} · {{ pr.uree_kg_ha|round|int }} kg/ha{% endif %}</td></tr>{% endif %}
+    {% if pr.rendement_t_ha is not none %}<tr><td class="text-muted">Rendement</td><td>{{ '%.2f'|format(pr.rendement_t_ha) }} t/ha
+      {% if pr.methode_rendement %}<span class="text-muted">({{ pr.methode_rendement|lower }})</span>{% endif %}
+      {% if not pr.rendement_valide %}<span class="badge bg-warning text-dark" title="hors de la plage plausible pour la culture">à vérifier</span>{% endif %}</td></tr>{% endif %}
+    {% if pr.date_recolte %}<tr><td class="text-muted">Récolte</td><td>{{ pr.date_recolte.strftime('%d/%m/%Y') }}</td></tr>{% endif %}
+    {% if pr.observations %}<tr><td class="text-muted">Observations</td><td>{{ pr.observations }}</td></tr>{% endif %}
+  </table>
+  {% endfor %}
+  {% if attributs %}
+  <details class="small"><summary class="text-muted">Autres informations d'enquête ({{ attributs|length }})</summary>
+    <table class="table table-sm small mb-0 mt-1">
+      {% for a in attributs %}<tr><td class="text-muted">{{ a.cle }}</td><td>{{ a.valeur }}</td></tr>{% endfor %}
+    </table>
+  </details>
+  {% endif %}
+</div></div>
+{% endif %}

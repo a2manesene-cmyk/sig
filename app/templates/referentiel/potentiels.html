@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block title %}Rendements potentiels — ANCAR SIG{% endblock %}
+{% macro t(v) -%}{{ ('%g'|format(v)).replace('.', ',') if v is not none else '' }}{%- endmacro %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+  <h3 class="ancar-title mb-0">Rendements potentiels par spéculation et variété</h3>
+  <div class="d-flex gap-2">
+    <a href="{{ url_for('referentiel.liste') }}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-journal-bookmark"></i> Référentiel</a>
+    <form method="post" onsubmit="this.querySelector('button').disabled=true;this.querySelector('button').innerHTML='Application en cours…';">
+      <input type="hidden" name="action" value="appliquer">
+      <button class="btn ancar-btn btn-sm"><i class="bi bi-arrow-repeat"></i> Appliquer à toutes les parcelles</button>
+    </form>
+  </div>
+</div>
+<p class="small text-muted">Le potentiel d'une parcelle (utilisé par le module Rendement) vient de sa <b>variété</b> si elle est connue
+  et a un potentiel, sinon du <b>potentiel par défaut de la spéculation</b>. Un potentiel saisi à la main sur une fiche parcelle n'est jamais écrasé.
+  Valeurs en tonnes par hectare.</p>
+
+<div class="row g-3 mb-3">
+  <div class="col-6 col-lg-3"><div class="card border-0 shadow-sm h-100"><div class="card-body py-2">
+    <div class="text-muted small">Parcelles</div><div class="fs-5 fw-semibold">{{ n_parcelles }}</div></div></div></div>
+  <div class="col-6 col-lg-3"><div class="card border-0 shadow-sm h-100"><div class="card-body py-2">
+    <div class="text-muted small">Potentiel par variété</div><div class="fs-5 fw-semibold">{{ origines.get('variete', 0) }}</div></div></div></div>
+  <div class="col-6 col-lg-3"><div class="card border-0 shadow-sm h-100"><div class="card-body py-2">
+    <div class="text-muted small">Potentiel par spéculation</div><div class="fs-5 fw-semibold">{{ origines.get('speculation', 0) }}</div></div></div></div>
+  <div class="col-6 col-lg-3"><div class="card border-0 shadow-sm h-100"><div class="card-body py-2">
+    <div class="text-muted small">Saisi à la main (conservé)</div><div class="fs-5 fw-semibold">{{ origines.get('manuel', 0) }}</div></div></div></div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-lg-6">
+    <form method="post" class="card border-0 shadow-sm h-100"><div class="card-body">
+      <h6><i class="bi bi-plus-circle text-success"></i> Nouvelle spéculation</h6>
+      <input type="hidden" name="action" value="ajouter_culture">
+      <div class="row g-2">
+        <div class="col-md-5"><input name="nom" class="form-control form-control-sm" placeholder="Nom (ex. Arachide, Mil, Riz…)" required></div>
+        <div class="col-md-3"><select name="systeme" class="form-select form-select-sm"><option value="Pluvial">Pluvial</option><option value="Irrigué">Irrigué</option></select></div>
+        <div class="col-md-4"><input name="potentiel" inputmode="decimal" class="form-control form-control-sm" placeholder="Potentiel (t/ha)"></div>
+        <div class="col-md-5"><input name="famille" class="form-control form-control-sm" placeholder="Famille (Céréale, Légumineuse…)"></div>
+        <div class="col-md-7"><input name="synonymes" class="form-control form-control-sm" placeholder="Noms dans les fichiers, séparés par des virgules"></div>
+        <div class="col-12"><button class="btn btn-success btn-sm"><i class="bi bi-plus"></i> Ajouter la spéculation</button></div>
+      </div>
+    </div></form>
+  </div>
+  <div class="col-lg-6">
+    <form method="post" class="card border-0 shadow-sm h-100"><div class="card-body">
+      <h6><i class="bi bi-plus-circle text-success"></i> Nouvelle variété</h6>
+      <input type="hidden" name="action" value="ajouter_variete">
+      <div class="row g-2">
+        <div class="col-md-5"><select name="culture_id" class="form-select form-select-sm" required>
+          <option value="">Spéculation…</option>
+          {% for c in cultures %}<option value="{{ c.id }}">{{ c.nom }}</option>{% endfor %}</select></div>
+        <div class="col-md-7"><input name="nom" class="form-control form-control-sm" placeholder="Nom de la variété" required></div>
+        <div class="col-md-4"><input name="potentiel" inputmode="decimal" class="form-control form-control-sm" placeholder="Potentiel (t/ha)"></div>
+        <div class="col-md-3"><input name="cycle" inputmode="numeric" class="form-control form-control-sm" placeholder="Cycle (j)"></div>
+        <div class="col-md-5"><input name="source" class="form-control form-control-sm" placeholder="Source (ISRA, semencier…)"></div>
+        <div class="col-12"><button class="btn btn-success btn-sm"><i class="bi bi-plus"></i> Ajouter la variété</button></div>
+      </div>
+    </div></form>
+  </div>
+</div>
+
+{% if non_ref %}
+<div class="card border-0 shadow-sm mb-3 border-start border-warning border-3"><div class="card-body py-2">
+  <h6 class="mb-1"><i class="bi bi-exclamation-circle text-warning"></i> Variétés déclarées sur le terrain, absentes du référentiel</h6>
+  <p class="small text-muted mb-2">Ces parcelles reçoivent le potentiel par défaut de leur spéculation. Ajoutez la variété pour lui donner son propre potentiel.</p>
+  <div class="d-flex flex-wrap gap-2">
+    {% for c, var, n in non_ref %}
+    <form method="post" class="d-flex align-items-center gap-1 border rounded px-2 py-1 small">
+      <input type="hidden" name="action" value="ajouter_variete"><input type="hidden" name="culture_id" value="{{ c.id }}"><input type="hidden" name="nom" value="{{ var }}">
+      <span>{{ c.nom }} · <b>{{ var }}</b> ({{ n }})</span>
+      <input name="potentiel" inputmode="decimal" class="form-control form-control-sm" style="width:80px" placeholder="t/ha">
+      <button class="btn btn-outline-success btn-sm py-0">Ajouter</button>
+    </form>
+    {% endfor %}
+  </div>
+</div></div>
+{% endif %}
+
+<form method="post" id="form_pot">
+  <input type="hidden" name="action" value="enregistrer">
+  <div class="card border-0 shadow-sm"><div class="card-body p-0"><div class="table-responsive">
+  <table class="table table-sm align-middle mb-0 small">
+    <thead class="table-light"><tr><th style="width:32%">Spéculation / variété</th><th class="text-end">Parcelles</th>
+      <th style="width:150px">Potentiel (t/ha)</th><th style="width:110px">Cycle (j)</th><th>Source / notes</th><th></th></tr></thead>
+    <tbody>
+    {% for c in cultures %}
+      <tr class="table-light">
+        <td><a href="{{ url_for('referentiel.culture', cid=c.id) }}" class="fw-semibold text-decoration-none">{{ c.nom }}</a>
+          <span class="text-muted">· {{ c.systeme or '—' }}</span>{% if c.a_valider %} <span class="badge bg-warning text-dark">à valider</span>{% endif %}
+          <div class="text-muted">Potentiel par défaut de la spéculation</div></td>
+        <td class="text-end fw-semibold">{{ par_c.get(c.id, 0) }}</td>
+        <td><input name="c_{{ c.id }}" value="{{ t(c.rdt_potentiel_t) }}" inputmode="decimal" class="form-control form-control-sm {{ 'border-warning' if c.rdt_potentiel_t is none }}" placeholder="à renseigner"></td>
+        <td class="text-muted">{{ c.cycle_j or '—' }}</td>
+        <td class="text-muted">{% if c.rdt_min or c.rdt_max %}référence {{ t(c.rdt_min) or '?' }}–{{ t(c.rdt_max) or '?' }} t/ha{% endif %}</td>
+        <td class="text-end">{% if not par_c.get(c.id) %}<button form="del_c_{{ c.id }}" class="btn btn-link btn-sm text-danger p-0" title="Supprimer (aucune parcelle)"><i class="bi bi-trash"></i></button>{% endif %}</td>
+      </tr>
+      {% for v in c.varietes.order_by(None).all()|sort(attribute='nom') %}
+      <tr>
+        <td class="ps-4"><i class="bi bi-arrow-return-right text-muted"></i> {{ v.nom }}</td>
+        <td class="text-end">{{ par_v.get(v.id, 0) }}</td>
+        <td><input name="v_{{ v.id }}" value="{{ t(v.rdt_potentiel_t) }}" inputmode="decimal" class="form-control form-control-sm" placeholder="= spéculation"></td>
+        <td><input name="vc_{{ v.id }}" value="{{ v.cycle_j or '' }}" inputmode="numeric" class="form-control form-control-sm"></td>
+        <td class="text-muted">{{ v.source or '' }}{% if v.notes %}<div>{{ v.notes|truncate(90) }}</div>{% endif %}</td>
+        <td class="text-end"><button form="del_v_{{ v.id }}" class="btn btn-link btn-sm text-danger p-0" title="Supprimer la variété"><i class="bi bi-x-lg"></i></button></td>
+      </tr>
+      {% endfor %}
+    {% endfor %}
+    </tbody>
+  </table>
+  </div></div></div>
+  <div class="d-flex flex-wrap gap-3 align-items-center mt-3">
+    <button class="btn btn-success btn-sm"><i class="bi bi-save"></i> Enregistrer les potentiels</button>
+    <label class="small"><input type="checkbox" name="appliquer" class="form-check-input" checked> Appliquer aussitôt à toutes les parcelles</label>
+  </div>
+</form>
+{% for c in cultures %}
+<form method="post" id="del_c_{{ c.id }}" onsubmit="return confirm('Supprimer cette spéculation et ses variétés ?');"><input type="hidden" name="action" value="supprimer_culture"><input type="hidden" name="culture_id" value="{{ c.id }}"></form>
+{% for v in c.varietes %}<form method="post" id="del_v_{{ v.id }}" onsubmit="return confirm('Supprimer cette variété ?');"><input type="hidden" name="action" value="supprimer_variete"><input type="hidden" name="variete_id" value="{{ v.id }}"></form>{% endfor %}
+{% endfor %}
+{% endblock %}

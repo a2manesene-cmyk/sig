@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Suivi des opérations — ANCAR SIG{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+  <h3 class="ancar-title mb-0">Suivi des opérations culturales <span class="badge ancar-badge">{{ total }}</span></h3>
+  <div class="btn-group btn-group-sm">
+    <a href="{{ url_for('referentiel.suivi') }}" class="btn btn-outline-success {{ 'active' if filtre != 'retard' }}">En retard ou à faire</a>
+    <a href="{{ url_for('referentiel.suivi', filtre='retard') }}" class="btn btn-outline-danger {{ 'active' if filtre == 'retard' }}">En retard seulement</a>
+  </div>
+</div>
+<p class="small text-muted">Parcelles de votre périmètre dont la date de semis / repiquage est connue et dont la spéculation a une fiche technique
+  validée. Une opération est <b>en retard</b> si elle n'est pas enregistrée {{ tolerance }} jours après sa date prévue ; <b>à faire</b> si sa date
+  tombe dans les {{ tolerance }} jours. Les opérations « au besoin » (traitement du sol…) ne sont jamais signalées.</p>
+
+<div class="card border-0 shadow-sm"><div class="card-body p-0"><div class="table-responsive">
+<table class="table table-hover table-sm align-middle mb-0 small">
+  <thead class="table-light"><tr><th>Parcelle</th><th>Culture</th><th>Semis / repiquage</th><th class="text-end">En retard</th><th class="text-end">À faire</th><th>Prochaine opération</th><th></th></tr></thead>
+  <tbody>
+  {% for p, c, debut, s in lignes %}
+    <tr>
+      <td><a href="{{ url_for('parcelles.fiche', pid=p.id) }}" class="fw-semibold text-decoration-none">{{ p.code or p.id }}</a>
+        <div class="text-muted">{{ p.commune or p.village or '' }}{% if p.producteur %} · {{ p.producteur.nom_complet }}{% endif %}</div></td>
+      <td>{{ c.nom }}</td>
+      <td>{{ debut.strftime('%d/%m/%Y') }}</td>
+      <td class="text-end">{% if s.comptes.get('En retard') %}<span class="badge bg-danger">{{ s.comptes['En retard'] }}</span>{% else %}—{% endif %}</td>
+      <td class="text-end">{% if s.comptes.get('À faire') %}<span class="badge bg-warning text-dark">{{ s.comptes['À faire'] }}</span>{% else %}—{% endif %}</td>
+      <td>{% if s.prochaine %}{{ s.prochaine.op.libelle }} <span class="text-muted">· {{ s.prochaine.date.strftime('%d/%m') }}</span>{% endif %}</td>
+      <td class="text-end"><a href="{{ url_for('referentiel.parcelle', pid=p.id) }}#itineraire" class="btn btn-outline-success btn-sm py-0">Itinéraire</a></td>
+    </tr>
+  {% else %}
+    <tr><td colspan="7" class="text-muted p-3">Aucune opération en retard ou à faire. Seules les parcelles dont la date de semis / repiquage est enregistrée
+      et dont la spéculation a une <a href="{{ url_for('referentiel.fiches_liste') }}">fiche technique validée</a> sont suivies.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div></div></div>
+{% if total > lignes|length %}<p class="small text-muted mt-2">{{ lignes|length }} premières parcelles affichées sur {{ total }}.</p>{% endif %}
+{% endblock %}

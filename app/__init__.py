@@ -28,6 +28,9 @@ def create_app(config_class=Config):
     from .rendement.routes import rendement_bp
     from .bancabilite.routes import bancabilite_bp
     from .financement.routes import financement_bp
+    from .sol.routes import sol_bp
+    from .climat.routes import climat_bp
+    from .referentiel.routes import referentiel_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(main_bp)
@@ -40,6 +43,9 @@ def create_app(config_class=Config):
     app.register_blueprint(rendement_bp)
     app.register_blueprint(bancabilite_bp)
     app.register_blueprint(financement_bp)
+    app.register_blueprint(sol_bp)
+    app.register_blueprint(climat_bp)
+    app.register_blueprint(referentiel_bp)
 
     # Contexte Jinja utile aux templates
     @app.context_processor

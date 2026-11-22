@@ -1,0 +1,30 @@
+{# Bloc « Climat » de la fiche parcelle (module Climat) #}
+{% set cl = climat_parcelle(p.id) %}
+<div class="card border-0 shadow-sm mt-3" id="climat"><div class="card-body">
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+    <h6 class="mb-0"><i class="bi bi-cloud-sun text-success"></i> Climat de la saison{% if cl and cl.saison %} {{ cl.saison.annee }}{% endif %}</h6>
+    {% if cl and cl.saison %}<a href="{{ url_for('climat.parcelle', pid=p.id) }}" class="btn btn-outline-success btn-sm"><i class="bi bi-graph-up"></i> Détail et historique</a>{% endif %}
+  </div>
+  {% if cl and cl.saison %}
+  {% set s = cl.saison %}{% set m = cl.moy %}
+  <div class="row g-2 small">
+    <div class="col-6 col-md-3"><div class="border rounded p-2 h-100">
+      <div class="text-muted">Démarrage</div><div class="fw-semibold">{{ s.debut|jour_mois if s.debut else 'non installée' }}</div>
+      {% if m and m.debut_jour and s.debut %}<div class="text-muted">moyenne {{ date_du_jour(s.annee, m.debut_jour)|jour_mois }}</div>{% endif %}</div></div>
+    <div class="col-6 col-md-3"><div class="border rounded p-2 h-100">
+      <div class="text-muted">Fin · longueur</div><div class="fw-semibold">{% if s.fin %}{{ s.fin|jour_mois }} · {{ s.longueur_j }} j{% else %}en cours{% endif %}</div>
+      {% if m and m.longueur_j %}<div class="text-muted">moyenne {{ m.longueur_j|round|int }} j</div>{% endif %}</div></div>
+    <div class="col-6 col-md-3"><div class="border rounded p-2 h-100">
+      <div class="text-muted">Pluie mai–oct.</div><div class="fw-semibold">{{ '%.0f'|format(s.cumul_mai_oct) }} mm</div>
+      {% if m and m.cumul_mai_oct %}{% set e = (s.cumul_mai_oct / m.cumul_mai_oct - 1) * 100 %}
+      <span class="badge bg-{{ 'danger' if e < -20 else ('warning text-dark' if e < -10 else ('success' if e > 10 else 'light text-dark border')) }}">{{ '+' if e > 0 }}{{ '%.0f'|format(e) }} % / moyenne</span>{% endif %}</div></div>
+    <div class="col-6 col-md-3"><div class="border rounded p-2 h-100">
+      <div class="text-muted">Séquence sèche max</div><div class="fw-semibold">{{ s.seq_seche_max_j if s.seq_seche_max_j is not none else '—' }} j</div>
+      {% if s.faux_departs %}<span class="badge bg-warning text-dark">{{ s.faux_departs }} faux départ(s)</span>{% endif %}</div></div>
+  </div>
+  {% elif cl %}
+  <p class="text-muted small mb-0">Parcelle rattachée à la grille climatique (cellule {{ cl.cellule.code }}), données climatiques pas encore importées.</p>
+  {% else %}
+  <p class="text-muted small mb-0">Parcelle pas encore rattachée à la grille climatique.</p>
+  {% endif %}
+</div></div>

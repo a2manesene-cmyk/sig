@@ -139,11 +139,18 @@ Certbot va configurer automatiquement le certificat SSL et son renouvellement au
   ```bash
   docker compose restart
   ```
-- **Mettre à jour l'application après un `git pull`** :
+- **Mettre à jour l'application (une seule commande)** :
   ```bash
   cd /var/www/sig
-  git pull
-  docker compose up -d --build web
+  sudo bash mettre_a_jour.sh
+  ```
+  Le script sauvegarde la base dans `sauvegardes/`, récupère le code (`git pull`), reconstruit
+  l'image, crée les nouvelles tables (enquête, sol, climat, référentiel / fiches techniques)
+  et redémarre l'application. Il peut être relancé sans risque.
+- **Mettre à jour ET remplacer la base par `ancar_db.backup` du dépôt**
+  (2885 parcelles Grenier du maïs corrigées — les saisies faites en ligne depuis sont remplacées) :
+  ```bash
+  sudo bash mettre_a_jour.sh --restaurer-base
   ```
 - **Faire une sauvegarde manuelle de la base de données** :
   ```bash
