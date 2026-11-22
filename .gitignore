@@ -1,5 +1,7 @@
 # Secrets / configuration locale (NE JAMAIS COMMITER)
 .env
+ee-key.json
+*-key.json
 app/notifications/settings.py
 
 # Données personnelles (producteurs : noms, téléphones)

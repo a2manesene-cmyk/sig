@@ -24,7 +24,10 @@ services:
       - DB_PORT=5432
       - DB_NAME=${DB_NAME:-ancar_db}
       - GEE_PROJECT=${GEE_PROJECT:-ancarsi-f07fd}
+      - EE_KEY_FILE=/app/ee-key.json
     volumes:
+      # clé de compte de service Google Earth Engine (fichier du serveur, jamais dans Git)
+      - ./ee-key.json:/app/ee-key.json:ro
       # fiches techniques déposées, état du calcul des indices : conservés entre les mises à jour
       - ./instance:/app/instance
     ports:
