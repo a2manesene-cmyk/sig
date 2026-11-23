@@ -310,8 +310,9 @@ const fr = n => (n ?? 0).toLocaleString('fr-FR');
 // ---- Producteurs par sexe ----
 new Chart(document.getElementById('chartSexe'), {
   type: 'doughnut',
-  data: { labels: ['Hommes', 'Femmes'],
-          datasets: [{ data: [{{ kpis.prod_parcelles - kpis.femmes }}, {{ kpis.femmes }}], backgroundColor: [VERT_FONCE, OR] }] },
+  data: { labels: ['Hommes', 'Femmes', 'Non renseigné'],
+          datasets: [{ data: [{{ kpis.hommes }}, {{ kpis.femmes }}, {{ kpis.prod_parcelles - kpis.hommes - kpis.femmes }}],
+                       backgroundColor: [VERT_FONCE, OR, '#c9d1cb'] }] },
   options: { cutout: '62%', aspectRatio: 1.5, plugins: { legend: { position: 'right', labels: { boxWidth: 12 } },
     tooltip: { callbacks: { label: c => ` ${c.label} : ${fr(c.raw)} (${Math.round(100 * c.raw / {{ kpis.prod_parcelles or 1 }})} %)` } } } }
 });

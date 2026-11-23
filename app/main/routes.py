@@ -281,14 +281,15 @@ def _complement(pids):
                COUNT(DISTINCT p.producteur_id) FILTER (WHERE UPPER(pd.sexe) = 'F'),
                COUNT(DISTINCT NULLIF(TRIM(p.animateur), '')),
                COUNT(DISTINCT LOWER(TRIM(p.village))),
+               COUNT(DISTINCT p.producteur_id) FILTER (WHERE UPPER(pd.sexe) IN ('H', 'M')),
                COUNT(DISTINCT LOWER(TRIM(p.departement))),
                AVG(p.surface_ha)
           FROM parcelles p LEFT JOIN producteurs pd ON pd.id = p.producteur_id
          WHERE {cond}"""), params).one()
     kpis = {"prod_parcelles": k[0] or 0, "femmes": k[1] or 0,
             "femmes_pct": round(100.0 * k[1] / k[0]) if k[0] else None,
-            "relais": k[2] or 0, "villages": k[3] or 0, "departements": k[4] or 0,
-            "surface_moy": round(k[5], 2) if k[5] else None}
+            "relais": k[2] or 0, "villages": k[3] or 0, "hommes": k[4] or 0,
+            "departements": k[5] or 0, "surface_moy": round(k[6], 2) if k[6] else None}
 
     # dernier indice connu par parcelle (pour le tableau et la carte)
     derniers = f"""
