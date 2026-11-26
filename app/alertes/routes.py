@@ -210,3 +210,86 @@ def export_xlsx():
         bio, as_attachment=True, download_name="alertes_stress_hydrique.xlsx",
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
+
+
+# --------------------------------------------------------------------------
+# Alertes basées sur l'impact : danger -> impact selon le stade -> action
+# --------------------------------------------------------------------------
+def _date_ref():
+    from datetime import date, datetime
+    v = request.args.get("au")
+    try:
+        return datetime.strptime(v, "%Y-%m-%d").date() if v else date.today()
+    except ValueError:
+        return date.today()
+
+
+def _filtrer_impact(alertes):
+    danger = request.args.get("danger") or None
+    niveau = _i(request.args.get("niveau"))
+    commune = (request.args.get("commune") or "").strip() or None
+    out = [a for a in alertes
+           if (not danger or a["danger"] == danger) and (not niveau or a["niveau"] >= niveau)
+           and (not commune or (a["parcelle"].commune or "") == commune)]
+    return out, danger, niveau, commune
+
+
+@alertes_bp.route("/impact")
+@login_required
+def impact():
+    from datetime import date, timedelta
+    from app.alertes import impact as I
+    au = _date_ref()
+    alertes, ctx = I.evaluer(au, parcelle_ids(current_user))
+    communes = sorted({a["parcelle"].commune for a in alertes if a["parcelle"].commune})
+    filtrees, danger, niveau, commune = _filtrer_impact(alertes)
+    # synthèse danger x niveau, et parcelles distinctes
+    synth = {}
+    for a in alertes:
+        s = synth.setdefault(a["danger"], {"lib": a["danger_lib"], "icone": a["icone"], 1: 0, 2: 0, 3: 0})
+        s[a["niveau"]] += 1
+    par_niveau = {n: len({a["parcelle"].id for a in alertes if a["niveau"] == n}) for n in (1, 2, 3)}
+    # raccourcis : dates de la campagne
+    an = ctx["annee"]
+    raccourcis = [date(an, m, j) for m, j in ((7, 15), (8, 1), (8, 15), (9, 1), (9, 15), (10, 1), (10, 15))]
+    raccourcis = [d for d in raccourcis if d <= date.today()]
+    return render_template("alertes/impact.html", alertes=filtrees[:400], total=len(filtrees), ctx=ctx,
+                           synth=synth, par_niveau=par_niveau, niveaux=I.NIVEAUX, dangers=I.DANGERS,
+                           communes=communes, danger=danger, niveau=niveau, commune=commune,
+                           raccourcis=raccourcis, au=au, n_parcelles=len({a["parcelle"].id for a in alertes}))
+
+
+@alertes_bp.route("/impact.xlsx")
+@login_required
+def impact_xlsx():
+    from app.alertes import impact as I
+    au = _date_ref()
+    alertes, ctx = I.evaluer(au, parcelle_ids(current_user))
+    alertes, *_ = _filtrer_impact(alertes)
+    wb = Workbook()
+    ws = wb.active
+    ws.title = f"Alertes {au:%d-%m-%Y}"
+    entetes = ["Niveau", "Danger", "Constat", "Code parcelle", "Producteur", "Téléphone", "Village", "Commune",
+               "Culture", "Stade", "Jours depuis semis", "Semis (origine)", "Impact", "Action conseillée", "Message SMS"]
+    ws.append(entetes)
+    for cell in ws[1]:
+        cell.fill = PatternFill("solid", fgColor="1C5D3F")
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    couleurs = {1: "FFF3C4", 2: "FFE0B2", 3: "FFCDD2"}
+    for a in alertes:
+        p = a["parcelle"]
+        ws.append([a["niveau_lib"], a["danger_lib"], a["constat"], p.code or f"P{p.id}",
+                   p.producteur.nom_complet if p.producteur else "", p.producteur.telephone if p.producteur else "",
+                   p.village or "", p.commune or "", a["culture"], a["stade_lib"], a["jours"],
+                   f"{a['j0']:%d/%m/%Y} ({a['origine_j0']})", a["impact"], a["action"], I.message(a)])
+        ws.cell(row=ws.max_row, column=1).fill = PatternFill("solid", fgColor=couleurs[a["niveau"]])
+    for i, w in enumerate([12, 22, 34, 14, 24, 13, 16, 16, 10, 20, 10, 26, 48, 58, 80], start=1):
+        ws.column_dimensions[ws.cell(row=1, column=i).column_letter].width = w
+    for row in ws.iter_rows(min_row=2):
+        for cell in row:
+            cell.alignment = Alignment(vertical="top", wrap_text=True)
+    ws.freeze_panes = "A2"
+    bio = BytesIO(); wb.save(bio); bio.seek(0)
+    return send_file(bio, as_attachment=True, download_name=f"alertes_impact_{au:%Y-%m-%d}.xlsx",
+                     mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")

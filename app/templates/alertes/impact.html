@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block title %}Alertes par impact — ANCAR SIG{% endblock %}
+{% block head %}
+<style>
+  .chaine { display:flex; align-items:stretch; gap:.5rem; flex-wrap:wrap; }
+  .chaine > div { flex:1 1 180px; border-radius:10px; padding:.6rem .8rem; }
+  .chaine .fl { flex:0 0 auto; align-self:center; color:var(--ancar-muted); padding:0; }
+  .niv { display:inline-block; padding:.1rem .45rem; border-radius:4px; font-size:.75rem; font-weight:600; white-space:nowrap; }
+  .niv-1 { background:#FFF3C4; color:#7A5C00; } .niv-2 { background:#FFE0B2; color:#A84300; } .niv-3 { background:#FFCDD2; color:#9B1C1C; }
+  .carte-danger { border-left:4px solid #ccc; }
+  .tab-alertes { table-layout:fixed; min-width:900px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+  <div>
+    <h3 class="ancar-title mb-0">Alertes par impact</h3>
+    <p class="text-muted small mb-0">Pour chaque parcelle : le danger, son impact sur la culture selon son stade, et l'action à conseiller.</p>
+  </div>
+  <div class="d-flex gap-2">
+    <a href="{{ url_for('alertes.liste') }}" class="btn btn-sm btn-outline-secondary">Stress hydrique (indices)</a>
+    <a href="{{ url_for('alertes.impact_xlsx', au=au.isoformat(), danger=danger or '', niveau=niveau or '', commune=commune or '') }}" class="btn btn-sm ancar-btn"><i class="bi bi-file-earmark-excel"></i> Excel + messages SMS</a>
+  </div>
+</div>
+
+<div class="chaine mb-3 small">
+  <div style="background:#FDECEA"><b><i class="bi bi-cloud-lightning-rain"></i> Danger</b><br>Séquence sèche, fortes pluies, chaleur, stress hydrique, chute de vigueur</div>
+  <div class="fl"><i class="bi bi-arrow-right fs-4"></i></div>
+  <div style="background:#FFF4E0"><b><i class="bi bi-flower1"></i> Impact sur la culture</b><br>Selon le stade : levée, croissance, floraison, remplissage, maturation</div>
+  <div class="fl"><i class="bi bi-arrow-right fs-4"></i></div>
+  <div style="background:#E8F3EC"><b><i class="bi bi-person-check"></i> Action conseillée</b><br>Ce que le conseiller et le producteur doivent faire</div>
+</div>
+
+<form method="get" class="card border-0 shadow-sm mb-3"><div class="card-body py-2 d-flex flex-wrap gap-2 align-items-end">
+  <div><label class="form-label small mb-0">Situation au</label>
+    <input type="date" name="au" value="{{ au.isoformat() }}" class="form-control form-control-sm" onchange="this.form.submit()"></div>
+  <div><label class="form-label small mb-0">Danger</label>
+    <select name="danger" class="form-select form-select-sm" onchange="this.form.submit()"><option value="">Tous</option>
+      {% for k, v in dangers.items() %}<option value="{{ k }}" {{ 'selected' if danger == k }}>{{ v[0] }}</option>{% endfor %}</select></div>
+  <div><label class="form-label small mb-0">Niveau minimum</label>
+    <select name="niveau" class="form-select form-select-sm" onchange="this.form.submit()"><option value="">Tous</option>
+      {% for n, v in niveaux.items() %}<option value="{{ n }}" {{ 'selected' if niveau == n }}>{{ v[0] }}</option>{% endfor %}</select></div>
+  <div><label class="form-label small mb-0">Commune</label>
+    <select name="commune" class="form-select form-select-sm" onchange="this.form.submit()"><option value="">Toutes</option>
+      {% for c in communes %}<option {{ 'selected' if commune == c }}>{{ c }}</option>{% endfor %}</select></div>
+  <div class="ms-auto small text-muted">Dates de la campagne :
+    {% for d in raccourcis %}<a href="{{ url_for('alertes.impact', au=d.isoformat()) }}" class="ms-1 {{ 'fw-bold' if d == au }}">{{ d.strftime('%d/%m') }}</a>{% endfor %}
+    · <a href="{{ url_for('alertes.impact') }}" class="ms-1">aujourd'hui</a></div>
+</div></form>
+
+{% set st = ctx.stats %}
+{% if not st.en_cycle %}
+<div class="alert alert-light border small">
+  <i class="bi bi-info-circle text-success"></i> Au {{ au.strftime('%d/%m/%Y') }}, aucune parcelle n'est en cours de cycle
+  ({{ st.terminees }} culture(s) terminée(s), {{ st.avant_semis }} pas encore semée(s)). Choisissez une date pendant la campagne ci-dessus.
+</div>
+{% else %}
+<div class="row g-3 mb-3">
+  <div class="col-6 col-lg-3"><div class="card stat-card h-100"><div class="card-body">
+    <div class="stat-icon"><i class="bi bi-map"></i></div>
+    <div class="stat-value">{{ st.en_cycle }}</div><div class="stat-label">Parcelles en cours de cycle</div>
+  </div></div></div>
+  {% for n in (3, 2, 1) %}
+  <div class="col-6 col-lg-3"><a href="{{ url_for('alertes.impact', au=au.isoformat(), niveau=n) }}" class="text-decoration-none text-reset">
+    <div class="card stat-card h-100" style="border-left-color:{{ niveaux[n][2] }}"><div class="card-body">
+    <div class="stat-icon" style="color:{{ niveaux[n][2] }}"><i class="bi bi-exclamation-triangle"></i></div>
+    <div class="stat-value">{{ par_niveau[n] }}</div><div class="stat-label">Parcelles en {{ niveaux[n][0]|lower }} &rsaquo;</div>
+  </div></div></a></div>
+  {% endfor %}
+</div>
+
+{% if synth %}
+<div class="row g-2 mb-3">
+  {% for k, s in synth.items() %}
+  <div class="col-sm-6 col-lg-4"><a href="{{ url_for('alertes.impact', au=au.isoformat(), danger=k) }}" class="text-decoration-none text-reset">
+    <div class="card border-0 shadow-sm carte-danger h-100" style="border-left-color:{{ niveaux[3][2] if s[3] else (niveaux[2][2] if s[2] else niveaux[1][2]) }}"><div class="card-body py-2">
+      <div class="fw-semibold"><i class="bi {{ s.icone }}"></i> {{ s.lib }}</div>
+      <div class="small mt-1">{% for n in (3, 2, 1) %}{% if s[n] %}<span class="niv niv-{{ n }} me-1">{{ s[n] }} {{ niveaux[n][0]|lower }}</span>{% endif %}{% endfor %}</div>
+    </div></div></a></div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="small text-muted mb-2">
+  Stade calculé depuis : {% for k, v in st.origine_j0.items() %}{{ k }} ({{ v }}){{ ', ' if not loop.last }}{% endfor %}.
+  {% if not ctx.climat %}<span class="text-warning-emphasis"><i class="bi bi-exclamation-circle"></i> Données climat non chargées pour cette période :
+  seuls les dangers observés par satellite sont évalués (chargez la pluie et la température dans <a href="{{ url_for('climat.tableau') }}">Climat</a>).</span>{% endif %}
+  {% if st.sans_image %} {{ st.sans_image }} parcelle(s) sans image satellite dans les 12 derniers jours.{% endif %}
+</div>
+
+<div class="card border-0 shadow-sm"><div class="card-body">
+  <h6 class="text-muted text-uppercase small mb-2">{{ total }} alerte(s){% if total > alertes|length %} — {{ alertes|length }} affichées, toutes dans l'export Excel{% endif %}</h6>
+  <div class="table-responsive"><table class="table table-sm table-hover align-middle mb-0 small tab-alertes">
+    <colgroup><col style="width:9%"><col style="width:16%"><col style="width:13%"><col style="width:20%"><col style="width:20%"><col style="width:22%"></colgroup>
+    <thead class="table-light"><tr><th>Niveau</th><th>Parcelle</th><th>Culture · stade</th><th>Danger</th><th>Impact</th><th>Action conseillée</th></tr></thead>
+    <tbody>
+    {% for a in alertes %}{% set p = a.parcelle %}
+      <tr>
+        <td><span class="niv niv-{{ a.niveau }}">{{ a.niveau_lib }}</span></td>
+        <td><a href="{{ url_for('parcelles.fiche', pid=p.id) }}" class="fw-semibold">{{ p.producteur.nom_complet if p.producteur else (p.code or 'Parcelle ' ~ p.id) }}</a>
+          <div class="text-muted">{{ p.village or '' }}{% if p.commune %} · {{ p.commune }}{% endif %}</div></td>
+        <td>{{ a.culture }}<div class="text-muted">{{ a.stade_lib }} (J+{{ a.jours }})</div></td>
+        <td><i class="bi {{ a.icone }}"></i> <b>{{ a.danger_lib }}</b><div class="text-muted">{{ a.constat }}</div></td>
+        <td class="texte">{{ a.impact }}</td>
+        <td class="texte">{{ a.action }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="6" class="text-center text-muted py-4"><i class="bi bi-check-circle text-success"></i> Aucune alerte pour ces critères.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</div></div>
+{% endif %}
+{% endblock %}
