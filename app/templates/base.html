@@ -17,36 +17,52 @@
     <a class="sidebar-brand" href="{{ url_for('main.dashboard') }}">
       <img src="{{ url_for('static', filename='img/logo_ancar.png') }}" alt="ANCAR"> ANCAR SIG
     </a>
+    {# Menu selon le rôle : chaque profil ne voit que ce qui lui sert (les pages restent protégées par leurs propres droits) #}
+    {% set code = current_user.role.code if current_user.role else '' %}
+    {% set n = current_user.niveau %}
+    {% set lecteur = code == 'LECTEUR' %}
+    {% set direction = n >= 3 or lecteur %}
+    {% set peu = not direction %}
     <nav class="sidebar-nav">
       <a href="{{ url_for('main.dashboard') }}"><i class="bi bi-speedometer2"></i> Tableau de bord</a>
 
-      <div class="sidebar-section">Données</div>
-      <a href="{{ url_for('parcelles.liste') }}"><i class="bi bi-map"></i> Parcelles</a>
-      <a href="{{ url_for('producteurs.liste') }}"><i class="bi bi-people"></i> Producteurs</a>
-      <a href="{{ url_for('producteurs.organisations') }}"><i class="bi bi-diagram-3"></i> Organisations</a>
-      <a href="{{ url_for('magasins.liste') }}"><i class="bi bi-house-door"></i> Magasins des OP</a>
+      <details class="sb-groupe" {{ 'open' if peu }}><summary class="sidebar-section">Parcelles et producteurs</summary>
+        <a href="{{ url_for('parcelles.liste') }}"><i class="bi bi-map"></i> Parcelles</a>
+        <a href="{{ url_for('producteurs.liste') }}"><i class="bi bi-people"></i> Producteurs</a>
+        {% if code != 'OP' %}<a href="{{ url_for('producteurs.organisations') }}"><i class="bi bi-diagram-3"></i> Organisations</a>{% endif %}
+        <a href="{{ url_for('magasins.liste') }}"><i class="bi bi-house-door"></i> Magasins des OP</a>
+      </details>
 
-      <div class="sidebar-section">Cartographie &amp; analyse</div>
-      <a href="{{ url_for('parcelles.carte') }}"><i class="bi bi-globe-europe-africa"></i> Carte SIG</a>
-      <a href="{{ url_for('teledetection.carte') }}"><i class="bi bi-satellite"></i> Télédétection</a>
-      <a href="{{ url_for('sol.liste') }}"><i class="bi bi-moisture"></i> Sols</a>
-      <a href="{{ url_for('climat.tableau') }}"><i class="bi bi-cloud-sun"></i> Climat</a>
+      <details class="sb-groupe" {{ 'open' if peu }}><summary class="sidebar-section">Suivi</summary>
+        <a href="{{ url_for('parcelles.carte') }}"><i class="bi bi-globe-europe-africa"></i> Carte</a>
+        <a href="{{ url_for('alertes.impact') }}"><i class="bi bi-exclamation-triangle"></i> Alertes</a>
+        {% if direction %}
+        <a href="{{ url_for('teledetection.carte') }}"><i class="bi bi-broadcast-pin"></i> Télédétection</a>
+        <a href="{{ url_for('climat.tableau') }}"><i class="bi bi-cloud-sun"></i> Climat</a>
+        <a href="{{ url_for('sol.liste') }}"><i class="bi bi-moisture"></i> Sols</a>
+        {% endif %}
+      </details>
 
-      <div class="sidebar-section">Décision</div>
-      <a href="{{ url_for('alertes.impact') }}"><i class="bi bi-exclamation-triangle"></i> Alertes par impact</a>
-      <a href="{{ url_for('referentiel.liste') }}"><i class="bi bi-journal-bookmark"></i> Référentiel cultures</a>
-      <a href="{{ url_for('referentiel.fiches_liste') }}"><i class="bi bi-file-earmark-text"></i> Fiches techniques</a>
-      <a href="{{ url_for('referentiel.suivi') }}"><i class="bi bi-list-check"></i> Suivi des opérations</a>
-      {% if current_user.niveau >= 4 %}<a href="{{ url_for('referentiel.potentiels') }}"><i class="bi bi-graph-up-arrow"></i> Rendements potentiels</a>{% endif %}
-      <a href="{{ url_for('rendement.liste') }}"><i class="bi bi-bar-chart-line"></i> Rendement</a>
-      <a href="{{ url_for('rendement.production') }}"><i class="bi bi-box-seam"></i> Production</a>
-      <a href="{{ url_for('bancabilite.liste') }}"><i class="bi bi-bank"></i> Bancabilité</a>
-      <a href="{{ url_for('financement.liste') }}"><i class="bi bi-cash-coin"></i> Financement</a>
+      <details class="sb-groupe" {{ 'open' if peu }}><summary class="sidebar-section">Conseil</summary>
+        <a href="{{ url_for('referentiel.fiches_liste') }}"><i class="bi bi-file-earmark-text"></i> Fiches techniques</a>
+        {% if n >= 2 or lecteur %}<a href="{{ url_for('referentiel.suivi') }}"><i class="bi bi-list-check"></i> Suivi des opérations</a>{% endif %}
+        {% if direction %}<a href="{{ url_for('referentiel.liste') }}"><i class="bi bi-journal-bookmark"></i> Référentiel cultures</a>{% endif %}
+      </details>
 
-      <div class="sidebar-section">Administration</div>
-      <a href="{{ url_for('export.index') }}"><i class="bi bi-file-earmark-arrow-down"></i> Export</a>
-      {% if current_user.a_role('ADMIN') %}
-      <a href="{{ url_for('utilisateurs.liste') }}"><i class="bi bi-person-gear"></i> Utilisateurs</a>
+      {% if direction %}
+      <details class="sb-groupe"><summary class="sidebar-section">Production et financement</summary>
+        <a href="{{ url_for('rendement.liste') }}"><i class="bi bi-bar-chart-line"></i> Rendement et production</a>
+        <a href="{{ url_for('bancabilite.liste') }}"><i class="bi bi-bank"></i> Bancabilité</a>
+        <a href="{{ url_for('financement.liste') }}"><i class="bi bi-cash-coin"></i> Financement</a>
+      </details>
+      {% endif %}
+
+      {% if n >= 3 %}
+      <details class="sb-groupe"><summary class="sidebar-section">Administration</summary>
+        <a href="{{ url_for('export.index') }}"><i class="bi bi-file-earmark-arrow-down"></i> Export</a>
+        {% if n >= 4 %}<a href="{{ url_for('referentiel.potentiels') }}"><i class="bi bi-graph-up-arrow"></i> Rendements potentiels</a>{% endif %}
+        {% if current_user.a_role('ADMIN') %}<a href="{{ url_for('utilisateurs.liste') }}"><i class="bi bi-person-gear"></i> Utilisateurs</a>{% endif %}
+      </details>
       {% endif %}
     </nav>
     <div class="sidebar-user">
@@ -101,7 +117,10 @@
   document.querySelectorAll('.sidebar-nav a').forEach(function (a) {
     try {
       var p = new URL(a.href).pathname.replace(/\/+$/, '');
-      if (p && (p === here || (p !== '' && here.indexOf(p) === 0))) a.classList.add('active');
+      if (p && (p === here || (p !== '' && here.indexOf(p) === 0))) {
+        a.classList.add('active');
+        var g = a.closest('details'); if (g) g.open = true;
+      }
     } catch (e) {}
   });
   var layout = document.querySelector('.ancar-layout'),

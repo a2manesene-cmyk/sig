@@ -204,3 +204,10 @@ a:hover { color: var(--ancar-green); }
   font-weight: 700; padding: .75rem .75rem .2rem; margin-top: .25rem;
 }
 .sidebar-nav a:first-of-type { margin-bottom: .1rem; }
+
+/* Groupes repliables du menu */
+.sb-groupe > summary { list-style: none; cursor: pointer; display: flex; justify-content: space-between; align-items: center; user-select: none; }
+.sb-groupe > summary::-webkit-details-marker { display: none; }
+.sb-groupe > summary::after { content: "\203A"; font-size: 1rem; transition: transform .15s ease; margin-right: .2rem; }
+.sb-groupe[open] > summary::after { transform: rotate(90deg); }
+.sb-groupe > summary:hover { color: #fff; }

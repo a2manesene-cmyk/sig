@@ -129,7 +129,7 @@
 {% if teledetection.actif %}
 <div class="row g-3 mb-3">
   <div class="col-6 col-lg-3"><div class="card stat-card kpi-mini h-100"><div class="card-body">
-    <div class="stat-icon"><i class="bi bi-satellite"></i></div>
+    <div class="stat-icon"><i class="bi bi-broadcast-pin"></i></div>
     <div class="stat-value">{{ teledetection.nb_suivies }}</div><div class="stat-label">Parcelles avec indices</div>
   </div></div></div>
   <div class="col-6 col-lg-3"><div class="card stat-card kpi-mini h-100"><div class="card-body">
@@ -158,7 +158,7 @@
 </div>
 {% else %}
 <div class="alert alert-light border mb-3">
-  <i class="bi bi-satellite text-success"></i> Aucune donnée de télédétection pour le moment.
+  <i class="bi bi-broadcast-pin text-success"></i> Aucune donnée de télédétection pour le moment.
   Lancez un calcul depuis <a href="{{ url_for('teledetection.calculer') }}">Télédétection → Calculer</a>.
 </div>
 {% endif %}

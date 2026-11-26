@@ -2,6 +2,7 @@
 {% block title %}Rendement — ANCAR SIG{% endblock %}
 {% macro qs(page) %}?culture={{ (culture or '')|urlencode }}&page={{ page }}{% endmacro %}
 {% block content %}
+{% include "rendement/_onglets.html" %}
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h3 class="ancar-title mb-0">Estimation du rendement</h3>
   <div>
