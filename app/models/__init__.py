@@ -30,3 +30,4 @@ from .sol import PointSolIFDC, AnalyseSol, HistoriqueSol
 from .climat import CelluleClimat, ParcelleCellule, ClimatJournalier, SaisonClimat
 from .enquete import PratiqueCampagne, AttributParcelle, SourceParcelle
 from .referentiel import CultureRef, VarieteRef, PotentielParcelle
+from .magasin import MagasinOP

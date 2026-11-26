@@ -96,6 +96,17 @@
       {% if teledetection.actif %}<div class="small text-muted">Dernier passage : {{ teledetection.derniere_date.strftime('%d/%m/%Y') }}</div>{% endif %}
       {% if complement.couverture.sans %}<a href="{{ url_for('teledetection.calculer') }}" class="small">Compléter les {{ complement.couverture.sans }} parcelle(s) sans historique &rsaquo;</a>{% endif %}
     </div></div>
+    {% if stockage %}
+    <a href="{{ url_for('magasins.liste') }}" class="text-decoration-none text-reset"><div class="card border-0 shadow-sm"><div class="card-body">
+      <h6 class="text-muted text-uppercase small mb-2">Stockage des OP &rsaquo;</h6>
+      <div class="d-flex justify-content-between small"><span>{{ stockage.magasins }} magasins · {{ stockage.ops }} OP</span>
+        <b>{{ "{:,.0f}".format(stockage.capacite).replace(",", " ") }} t</b></div>
+      {% if stockage.couverture is not none %}
+      <div class="barre my-1"><div style="width:{{ [stockage.couverture, 100]|min }}%;{{ 'background:#d73027' if stockage.couverture < 50 }}"></div></div>
+      <div class="small text-muted">{{ stockage.couverture }} % de la production attendue de ces OP ({{ "{:,.0f}".format(stockage.production).replace(",", " ") }} t)</div>
+      {% endif %}
+    </div></div></a>
+    {% endif %}
     <div class="card border-0 shadow-sm flex-grow-1"><div class="card-body">
       <h6 class="text-muted text-uppercase small mb-2">Producteurs par sexe</h6>
       <canvas id="chartSexe" height="170"></canvas>
@@ -291,7 +302,7 @@ const fr = n => (n ?? 0).toLocaleString('fr-FR');
   const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
     { maxZoom: 19, attribution: '© OpenStreetMap' });
   const carte = L.map('carteTdb', { preferCanvas: true, layers: [sat] }).setView([14.2, -15.2], 7);
-  L.control.layers({ 'Satellite': sat, 'OpenStreetMap': osm }, null, { position: 'topright' }).addTo(carte);
+  const ctrl = L.control.layers({ 'Satellite': sat, 'OpenStreetMap': osm }, null, { position: 'topright' }).addTo(carte);
   const couleur = v => v == null ? '#9e9e9e' : v < 0.10 ? '#d73027' : v < 0.20 ? '#F39C12' : v < 0.35 ? '#F4D03F' : v < 0.55 ? '#a6d96a' : '#1a9850';
   fetch("{{ url_for('main.points') }}?" + new URLSearchParams(FILTRES)).then(r => r.json()).then(pts => {
     if (!pts.length) return;
@@ -305,6 +316,17 @@ const fr = n => (n ?? 0).toLocaleString('fr-FR');
     groupe.addTo(carte);
     carte.fitBounds(groupe.getBounds(), { padding: [20, 20] });
   });
+  {% if stockage %}
+  // magasins des OP : couche activable
+  fetch("{{ url_for('magasins.points') }}").then(r => r.json()).then(mags => {
+    const couche = L.layerGroup(mags.map(m => L.marker([m.lat, m.lon], { icon: L.divIcon({ className: '',
+        html: '<div style="background:#C9A227;color:#fff;border:2px solid #fff;border-radius:4px;width:18px;height:18px;display:flex;align-items:center;justify-content:center;font-size:11px;box-shadow:0 1px 3px rgba(0,0,0,.4)">M</div>',
+        iconSize: [18, 18] }) })
+      .bindPopup(`<b>Magasin — ${m.op || ''}</b><br>${m.localite || ''}<br>Capacité : ${m.capacite ? m.capacite.toLocaleString('fr-FR') + ' t' : '—'}`)));
+    couche.addTo(carte);
+    ctrl.addOverlay(couche, 'Magasins des OP');
+  });
+  {% endif %}
 })();
 
 // ---- Producteurs par sexe ----

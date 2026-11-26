@@ -241,6 +241,17 @@ def dashboard():
 
     complement = _complement(_pids)
     kpis.update(complement.pop("kpis"))
+    stockage = None
+    try:
+        from app.magasins.service import synthese
+        with db.session.begin_nested():
+            s = [l for l in synthese(_org, _pids) if l["magasins"]]
+        if s:
+            cap = sum(l["capacite"] for l in s); prod = sum(l["production"] or 0 for l in s)
+            stockage = {"magasins": sum(l["magasins"] for l in s), "ops": len(s), "capacite": cap,
+                        "production": prod, "couverture": round(100 * cap / prod) if prod else None}
+    except Exception:                      # module magasins pas encore initialisé
+        stockage = None
 
     return render_template(
         "main/dashboard.html",
@@ -249,6 +260,7 @@ def dashboard():
         programmes=Programme.query.order_by(Programme.nom).all(),
         campagnes=Campagne.query.order_by(Campagne.annee.desc()).all(),
         complement=complement,
+        stockage=stockage,
         user=current_user,
         kpis=kpis,
         campagne=campagne,

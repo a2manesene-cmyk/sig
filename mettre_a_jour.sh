@@ -28,7 +28,7 @@ fi
 echo "3/4  Démarrage et mise à jour des tables"
 docker compose up -d
 sleep 5
-for s in init_enquete init_sol init_climat init_referentiel; do
+for s in init_enquete init_sol init_climat init_referentiel init_magasins; do
   docker compose exec -T web python "$s.py"
 done
 docker compose restart web

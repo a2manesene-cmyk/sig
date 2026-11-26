@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Magasin {{ m.code }} — ANCAR SIG{% endblock %}
+{% block content %}
+<div class="row justify-content-center"><div class="col-lg-8">
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h3 class="ancar-title mb-0">Magasin {{ m.code }}</h3>
+  <a href="{{ url_for('magasins.liste') }}" class="btn btn-outline-secondary btn-sm">Retour</a>
+</div>
+<div class="card border-0 shadow-sm"><div class="card-body">
+<form method="post" class="row g-3">
+  <div class="col-md-6"><label class="form-label">Organisation (OP)</label>
+    <select name="organisation_id" class="form-select"><option value="">— à rattacher —</option>
+      {% for o in ops %}<option value="{{ o.id }}" {{ 'selected' if m.organisation_id == o.id }}>{{ o.nom }}</option>{% endfor %}
+    </select>{% if m.nom_op_source %}<div class="form-text">Nom dans le fichier : {{ m.nom_op_source }}</div>{% endif %}</div>
+  <div class="col-md-6"><label class="form-label">Type</label>
+    <input name="type" class="form-control" value="{{ m.type or '' }}" list="types">
+    <datalist id="types"><option>Magasin de la coopérative</option><option>Magasin en location</option><option>Magasin communautaire</option></datalist></div>
+  <div class="col-md-6"><label class="form-label">Localité</label><input name="localite" class="form-control" value="{{ m.localite or '' }}"></div>
+  <div class="col-md-6"><label class="form-label">Commune</label><input name="commune" class="form-control" value="{{ m.commune or '' }}"></div>
+  <div class="col-md-6"><label class="form-label">Responsable</label><input name="responsable" class="form-control" value="{{ m.responsable or '' }}"></div>
+  <div class="col-md-6"><label class="form-label">Téléphone</label><input name="telephone" class="form-control" value="{{ m.telephone or '' }}" placeholder="9 chiffres"></div>
+  <div class="col-md-4"><label class="form-label">Longueur (m)</label><input name="longueur_m" class="form-control" value="{{ m.longueur_m if m.longueur_m is not none else '' }}"></div>
+  <div class="col-md-4"><label class="form-label">Largeur (m)</label><input name="largeur_m" class="form-control" value="{{ m.largeur_m if m.largeur_m is not none else '' }}"></div>
+  <div class="col-md-4"><label class="form-label">Capacité (tonnes)</label><input name="capacite_t" class="form-control" value="{{ m.capacite_t if m.capacite_t is not none else '' }}"></div>
+  <div class="col-12"><label class="form-label mb-0">Position GPS</label>
+    <div class="form-text mt-0 mb-1">En degrés décimaux, par exemple latitude 13.8123 et longitude -14.4301. Vous pouvez aussi cliquer sur la carte ou utiliser la position du téléphone.</div></div>
+  <div class="col-md-4"><input name="lat" id="lat" class="form-control" placeholder="Latitude" value="{{ '%.6f'|format(lat) if lat is not none else '' }}"></div>
+  <div class="col-md-4"><input name="lon" id="lon" class="form-control" placeholder="Longitude" value="{{ '%.6f'|format(lon) if lon is not none else '' }}"></div>
+  <div class="col-md-4"><button type="button" class="btn btn-outline-success w-100" onclick="maPosition()"><i class="bi bi-crosshair"></i> Ma position</button></div>
+  <div class="col-12"><div id="carte" style="height:300px;border-radius:8px"></div></div>
+  <div class="col-12"><label class="form-label">Observations</label><textarea name="observations" class="form-control" rows="2">{{ m.observations or '' }}</textarea></div>
+  <div class="col-12 d-flex justify-content-between">
+    <button class="btn ancar-btn"><i class="bi bi-check-lg"></i> Enregistrer</button>
+    {% if current_user.niveau >= 4 %}<button class="btn btn-outline-danger" formaction="{{ url_for('magasins.supprimer', mid=m.id) }}" formnovalidate
+       onclick="return confirm('Supprimer le magasin {{ m.code }} ?')"><i class="bi bi-trash"></i> Supprimer</button>{% endif %}
+  </div>
+</form>
+</div></div>
+</div></div>
+{% endblock %}
+{% block head %}<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>{% endblock %}
+{% block scripts %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const sat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, attribution: '© Esri, Maxar' });
+const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' });
+const lat0 = parseFloat(document.getElementById('lat').value), lon0 = parseFloat(document.getElementById('lon').value);
+const carte = L.map('carte', { layers: [sat] }).setView(isNaN(lat0) ? [13.6, -14.8] : [lat0, lon0], isNaN(lat0) ? 8 : 16);
+L.control.layers({ 'Satellite': sat, 'OpenStreetMap': osm }).addTo(carte);
+let mk = isNaN(lat0) ? null : L.marker([lat0, lon0]).addTo(carte);
+function poser(la, lo) {
+  document.getElementById('lat').value = la.toFixed(6); document.getElementById('lon').value = lo.toFixed(6);
+  if (mk) mk.setLatLng([la, lo]); else mk = L.marker([la, lo]).addTo(carte);
+  carte.setView([la, lo], Math.max(carte.getZoom(), 15));
+}
+carte.on('click', e => poser(e.latlng.lat, e.latlng.lng));
+function maPosition() {
+  if (!navigator.geolocation) return alert('Position non disponible sur cet appareil.');
+  navigator.geolocation.getCurrentPosition(p => poser(p.coords.latitude, p.coords.longitude),
+    () => alert('Impossible d’obtenir la position.'), { enableHighAccuracy: true, timeout: 15000 });
+}
+</script>
+{% endblock %}

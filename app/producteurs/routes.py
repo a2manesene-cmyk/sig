@@ -412,6 +412,18 @@ def organisations():
         .group_by(OrganisationProducteur.id).all()):
         alertes[oid] = n
 
+    # Magasins de stockage par organisation
+    stock = {}
+    try:
+        from app.models.magasin import MagasinOP
+        with db.session.begin_nested():
+            for oid, n, cap in (db.session.query(MagasinOP.organisation_id, func.count(MagasinOP.id),
+                                                 func.sum(MagasinOP.capacite_t))
+                                .group_by(MagasinOP.organisation_id).all()):
+                stock[oid] = (n, cap or 0)
+    except Exception:                      # table pas encore créée (init_magasins.py)
+        pass
+
     lignes = []
     for oid, nom, typ, region, nb_prod, nb_parc, surface in agg:
         lignes.append({
@@ -420,6 +432,7 @@ def organisations():
             "surface": round(surface or 0, 2),
             "filieres": sorted(filieres_par_op.get(oid, [])),
             "alertes": alertes.get(oid, 0),
+            "magasins": stock.get(oid, (0, 0))[0], "capacite": stock.get(oid, (0, 0))[1],
         })
 
     return render_template(

@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Importer les magasins — ANCAR SIG{% endblock %}
+{% block content %}
+<div class="row justify-content-center"><div class="col-lg-7">
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h3 class="ancar-title mb-0">Importer les magasins des OP</h3>
+  <a href="{{ url_for('magasins.liste') }}" class="btn btn-outline-secondary btn-sm">Retour</a>
+</div>
+<div class="card border-0 shadow-sm"><div class="card-body">
+  <p class="small text-muted">Fichier GeoJSON de points : le fichier nettoyé (<code>Magasins_OP_nettoye.geojson</code>) ou la fiche de collecte
+    brute (« Nom de l'OP », « Localites », « Nom Responsable », « Capacite de stockage en Tonne »…), en UTM 28N ou en WGS 84.
+    Les OP sont reconnues automatiquement ; un point en 0,0 est enregistré « sans position », à compléter ensuite.
+    Les magasins déjà présents (même code) sont mis à jour.</p>
+  <p class="small">Magasins enregistrés : <b>{{ n }}</b></p>
+  <form method="post" enctype="multipart/form-data">
+    <input type="file" name="fichier" accept=".geojson,.json" class="form-control mb-2" required>
+    <div class="form-check mb-3"><input class="form-check-input" type="checkbox" name="remplacer" id="remplacer">
+      <label class="form-check-label small" for="remplacer">Remplacer tous les magasins existants par ceux du fichier</label></div>
+    <button class="btn ancar-btn"><i class="bi bi-upload"></i> Importer</button>
+  </form>
+</div></div>
+</div></div>
+{% endblock %}

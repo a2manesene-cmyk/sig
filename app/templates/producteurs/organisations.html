@@ -51,6 +51,12 @@
           <div class="col-4"><div class="fw-semibold">{{ o.nb_parc }}</div><div class="small text-muted">Parcelles</div></div>
           <div class="col-4"><div class="fw-semibold">{{ '%.0f'|format(o.surface) }}</div><div class="small text-muted">ha</div></div>
         </div>
+        <div class="small mt-1">
+          <a href="{{ url_for('magasins.liste', op=o.id) }}" class="text-decoration-none {{ 'text-muted' if not o.magasins else 'text-success' }}">
+            <i class="bi bi-house-door"></i>
+            {% if o.magasins %}{{ o.magasins }} magasin(s) · {{ '{:,.0f}'.format(o.capacite).replace(',', ' ') }} t de stockage{% else %}Aucun magasin enregistré{% endif %}
+          </a>
+        </div>
         {% if o.filieres %}
         <div class="mt-2">
           {% for f in o.filieres %}<span class="badge bg-success-subtle text-success border border-success-subtle">{{ f }}</span> {% endfor %}
